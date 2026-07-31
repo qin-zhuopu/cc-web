@@ -71,6 +71,13 @@ class FakeMessageRepository implements MessageRepository {
   async listBySession(query: HistoryQuery): Promise<ReadonlyArray<Message>> {
     return this.store.get(query.sessionId) ?? [];
   }
+  async getById(id: MessageId): Promise<Message | undefined> {
+    for (const list of this.store.values()) {
+      const found = list.find((m) => m.id === id);
+      if (found) return found;
+    }
+    return undefined;
+  }
   async append(message: Message): Promise<void> {
     const list = this.store.get(message.sessionId) ?? [];
     list.push(message);

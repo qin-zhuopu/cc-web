@@ -25,3 +25,11 @@
 - source_spec: `epic-c1-4/SPEC.md`
   summary: TitleOrigin 用联合字面量，而同目录 SessionStatus/Mode/Source 用 enum，同一领域枚举/联合混用偏离 architecture §3.2 字面（§3.2 写的是 enum）。建议统一（联合更契合零框架/tree-shake），若统一为联合需同步修订架构文档。
   evidence: C1-E1/E4 对抗评审 nitpick。字面量值一致，DB/跨边界持久化兼容无碍，仅风格偏差。
+
+- source_spec: `epic-c1-5/SPEC.md`
+  summary: AppendMessageService 未注入/未用 RuntimeLog，偏离 architecture §6/§7（§7 要求构造注入 RuntimeLog、§6 要求关键写路径经 SK.RuntimeLog source=c1.message）。append/updateStreamStatus 均为关键写路径却无日志。
+  evidence: C1-E5 对抗评审 low 项。本轮为纯逻辑用例裁剪了可观测性依赖；接线到 c1-6 时应补 RuntimeLog 注入与写路径日志。
+
+- source_spec: `epic-c1-5/SPEC.md`
+  summary: getPromptView 对 taskRunId 的剥离过宽——剔除条件为「凡带 taskRunId 者整条剔除」，依赖「带 taskRunId 必为纯 marker」这一未在类型层固化的约定。建议在 architecture §3.3 或字段处把该前提写死，避免真实内容挂 taskRunId 时被误剔。
+  evidence: C1-E5 对抗评审 low 项。当前与现有字段语义自洽、可接受，但约定未固化有后续误用风险。

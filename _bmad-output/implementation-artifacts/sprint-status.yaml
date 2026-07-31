@@ -106,12 +106,12 @@ development_status:
   c1-4-4-confirm-c1-does-not-build-prompt: done
   epic-c1-4-retrospective: optional
 
-  epic-c1-5: backlog
-  c1-5-1-append-message-and-touch: backlog
-  c1-5-2-update-stream-status-with-transition-check: backlog
-  c1-5-3-get-history-ordered-with-pagination: backlog
-  c1-5-4-get-prompt-view-strip-render-only: backlog
-  c1-5-5-token-usage-projection-only: backlog
+  epic-c1-5: done
+  c1-5-1-append-message-and-touch: done
+  c1-5-2-update-stream-status-with-transition-check: done
+  c1-5-3-get-history-ordered-with-pagination: done
+  c1-5-4-get-prompt-view-strip-render-only: done
+  c1-5-5-token-usage-projection-only: done
   epic-c1-5-retrospective: optional
 
   epic-c1-6: backlog

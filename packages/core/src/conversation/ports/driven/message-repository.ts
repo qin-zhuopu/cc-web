@@ -17,6 +17,14 @@ import type { HistoryQuery } from '../driving/get-session-history-usecase.js';
 export interface MessageRepository {
   /** 按会话列消息（应用 HistoryQuery 的 limit/beforeRowId 分页）。 */
   listBySession(query: HistoryQuery): Promise<ReadonlyArray<Message>>;
+  /**
+   * 按 id 取单条消息；不存在返回 undefined。
+   *
+   * 供 updateStreamStatus 在推进前读回现值以经 canTransition 守卫
+   * （AppendMessageUseCase.updateStreamStatus 仅接收 messageId，无 sessionId，
+   * 故生命周期守卫需要一条按 id 的读回路径；对齐 c1-5 SPEC CAP-2「先读回消息现有 streamStatus」）。
+   */
+  getById(id: MessageId): Promise<Message | undefined>;
   /** 追加一条消息行。 */
   append(message: Message): Promise<void>;
   /**

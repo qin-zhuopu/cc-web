@@ -50,3 +50,5 @@ export type { TitleGenerationInput, TitleGeneratorPort } from './conversation/po
 // 用例服务（application service）
 export { ManageSessionService } from './conversation/usecases/manage-session.js';
 export { SetSessionTitleService } from './conversation/usecases/set-session-title.js';
+export { AppendMessageService } from './conversation/usecases/append-message.js';
+export { GetSessionHistoryService } from './conversation/usecases/get-session-history.js';
