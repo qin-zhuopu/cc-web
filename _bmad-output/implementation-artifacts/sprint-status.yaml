@@ -141,11 +141,11 @@ development_status:
   c2-2-5-implement-apply-event-accumulation: done
   epic-c2-2-retrospective: optional
 
-  epic-c2-3: backlog
-  c2-3-1-land-14-agent-stream-events: backlog
-  c2-3-2-event-mapper-contract-and-unknown-downgrade: backlog
-  c2-3-3-result-event-token-usage-projection: backlog
-  c2-3-4-phase-changed-event-from-core: backlog
+  epic-c2-3: done
+  c2-3-1-land-14-agent-stream-events: done
+  c2-3-2-event-mapper-contract-and-unknown-downgrade: done
+  c2-3-3-result-event-token-usage-projection: done
+  c2-3-4-phase-changed-event-from-core: done
   epic-c2-3-retrospective: optional
 
   epic-c2-4: backlog

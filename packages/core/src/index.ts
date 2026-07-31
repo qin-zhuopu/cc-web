@@ -109,3 +109,58 @@ export type {
 export type { ProviderReadPort, ResolvedProviderView, ProviderProtocol } from './agent-runtime/ports/driven/provider-read-port.js';
 // 喂模型历史投影（AppendMessageUseCase/GetSessionHistoryUseCase 已由 C1 段导出，此处不重复）
 export type { PromptMessage } from './agent-runtime/ports/driven/conversation-ports.js';
+// ---- C2-E3 事件映射契约 ----
+// 14 类事件构造工厂 + 判别 type guard（c2-3-1）。事件成员窄类型（type）与工厂/守卫（值）分列导出。
+// phase_changed 相关（phaseChangedEvent / isPhaseChangedEvent / PhaseChangedEvent）在下方从其权威模块统一导出，此处不重复。
+export type {
+  TextEvent,
+  ThinkingEvent,
+  ToolUseEvent,
+  ToolResultEvent,
+  ToolOutputEvent,
+  StatusEvent,
+  ResultEvent,
+  ErrorEvent,
+  PermissionRequestEvent,
+  PermissionResolvedEvent,
+  ContextUsageEvent,
+  RateLimitEvent,
+  FileChangedEvent,
+} from './agent-runtime/domain/event/event-factory.js';
+export {
+  textEvent,
+  thinkingEvent,
+  toolUseEvent,
+  toolResultEvent,
+  toolOutputEvent,
+  statusEvent,
+  resultEvent,
+  errorEvent,
+  permissionRequestEvent,
+  permissionResolvedEvent,
+  contextUsageEvent,
+  rateLimitEvent,
+  fileChangedEvent,
+  isTextEvent,
+  isThinkingEvent,
+  isToolUseEvent,
+  isToolResultEvent,
+  isToolOutputEvent,
+  isStatusEvent,
+  isResultEvent,
+  isErrorEvent,
+  isPermissionRequestEvent,
+  isPermissionResolvedEvent,
+  isContextUsageEvent,
+  isRateLimitEvent,
+  isFileChangedEvent,
+} from './agent-runtime/domain/event/event-factory.js';
+// phase_changed 事件：C2 核心产出（相位迁移时），权威定义在 phase-changed-event.js（c2-3-4）。
+export type { PhaseChangedEvent } from './agent-runtime/domain/event/phase-changed-event.js';
+export { phaseChangedEvent, isPhaseChangedEvent } from './agent-runtime/domain/event/phase-changed-event.js';
+// result 事件 token 投影（c2-3-3，AC-9 反假数据：无上报留空不填 0）
+export type { RawTokenUsageReport } from './agent-runtime/domain/event/result-projection.js';
+export { projectResultTokenUsage } from './agent-runtime/domain/event/result-projection.js';
+// EventMapper 契约（外部 Runtime 原始事件 → 内部 AgentStreamEvent；未知降级返回 null，c2-3-2）
+export type { EventMapper } from './agent-runtime/ports/driven/event-mapper.js';
+export { dropUnknownEvent } from './agent-runtime/ports/driven/event-mapper.js';
