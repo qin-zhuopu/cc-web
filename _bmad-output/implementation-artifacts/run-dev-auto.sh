@@ -29,6 +29,20 @@
 
 set -euo pipefail
 
+# ---- Python 解释器探测（本机无 python3，退回 python / py）------------------
+detect_python() {
+  for cand in python3 python py; do
+    if command -v "$cand" >/dev/null 2>&1; then echo "$cand"; return 0; fi
+  done
+  echo "找不到 python3 / python / py，脚本依赖 Python 解析 YAML。" >&2
+  exit 2
+}
+PY_BIN="$(detect_python)"
+
+# ---- Git 解释器（Git-Bash 下裸 git 输出异常，优先用 mingw64 全路径）--------
+GIT_BIN="git"
+[[ -x /mingw64/bin/git ]] && GIT_BIN=/mingw64/bin/git
+
 # ---- 参数解析 --------------------------------------------------------------
 EPIC_DIR="${1:-}"
 if [[ -z "$EPIC_DIR" ]]; then
@@ -63,7 +77,7 @@ fi
 
 # ---- 用 python 读出有序 story id 列表 + 每个 id 的 spec_checkpoint --------
 # 输出格式：每行 "<id>\t<spec_checkpoint 0|1>"
-mapfile -t STORY_ROWS < <(python3 - "$STORIES_YAML" <<'PY'
+mapfile -t STORY_ROWS < <("$PY_BIN" - "$STORIES_YAML" <<'PY'
 import sys, yaml
 with open(sys.argv[1], encoding="utf-8") as f:
     stories = yaml.safe_load(f) or []
@@ -86,7 +100,7 @@ story_status() {
   if [[ -z "$match" ]]; then
     echo "none"; return
   fi
-  python3 - "$match" <<'PY'
+  "$PY_BIN" - "$match" <<'PY'
 import sys, re
 text = open(sys.argv[1], encoding="utf-8").read()
 m = re.match(r"^---\n(.*?)\n---", text, re.S)
@@ -96,6 +110,31 @@ import yaml
 fm = yaml.safe_load(m.group(1)) or {}
 print(fm.get("status", "unknown"))
 PY
+}
+
+# ---- Git 保护：工作区是否干净 ---------------------------------------------
+# 返回 0=干净，1=有未提交改动。用 porcelain 判定（无输出即干净）。
+worktree_clean() {
+  local out
+  out="$("$GIT_BIN" -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)"
+  [[ -z "$out" ]]
+}
+
+# ---- Git 保护：故事完成后形成干净断点提交 ---------------------------------
+# 把该故事产生的全部改动提交为一个断点，供中断后 --from 续跑 / 回滚到故事边界。
+commit_story() {
+  local id="$1"
+  if worktree_clean; then
+    echo "    [$id] 无改动可提交（跳过 commit）。"
+    return 0
+  fi
+  "$GIT_BIN" -C "$PROJECT_ROOT" add -A
+  "$GIT_BIN" -C "$PROJECT_ROOT" commit -q -m "feat(dev-auto): 完成故事 ${id}
+
+由 run-dev-auto.sh 无人值守链路自动提交，形成故事边界断点。
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+  echo "    [$id] 已提交断点：$("$GIT_BIN" -C "$PROJECT_ROOT" rev-parse --short HEAD)"
 }
 
 # ---- 驱动单个故事 ----------------------------------------------------------
@@ -134,6 +173,15 @@ for row in "${STORY_ROWS[@]}"; do
     continue
   fi
 
+  # Git 保护：dispatch 前工作区必须干净，否则上一步残留改动会与本故事串味，
+  # 中断后难以回滚到干净的故事边界。dry-run 不检查。
+  if [[ $DRY_RUN -eq 0 ]] && ! worktree_clean; then
+    echo "!!! dispatch 故事 [$id] 前工作区不干净，存在未提交改动。停止编排。" >&2
+    echo "    请先手动提交或丢弃改动，再用 --from $id 续跑。" >&2
+    "$GIT_BIN" -C "$PROJECT_ROOT" status --short >&2
+    exit 1
+  fi
+
   # 已 blocked：停下等人
   if [[ "$st" == "blocked" ]]; then
     echo "!!! 故事 [$id] 处于 blocked，需人工介入。停止编排。" >&2
@@ -152,6 +200,8 @@ for row in "${STORY_ROWS[@]}"; do
   case "$st_after" in
     done)
       echo "    [$id] 完成。"
+      # Git 保护：完成即提交，形成干净的故事边界断点。
+      commit_story "$id"
       ;;
     blocked)
       echo "!!! [$id] 分派后 blocked，停止编排等人处理。" >&2
