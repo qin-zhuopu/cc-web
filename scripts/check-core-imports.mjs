@@ -4,8 +4,10 @@
 // 纳入根 `npm run test` 门禁（typecheck → 本脚本 → vitest）。
 //
 // 禁用清单（见 spec Design Notes / architecture.md 核心包铁律）：
-//   - import 模块：@nestjs/*、better-sqlite3、@anthropic-ai/*、uuid
+//   - import 模块：@nestjs/*、better-sqlite3、@anthropic-ai/*、uuid、crypto/node:crypto
 //   - 直调运行时 API：Date.now(、randomUUID
+//   - C1 专属【禁 phase 守卫】：conversation/ 子树严禁出现 C2 运行时相位概念
+//     （StreamSession、.phase 成员访问、'settling'/'terminal' 相位字面量）。
 //
 // 纯扫描逻辑（extractModuleSpecifiers / scanContent）已 export，供
 // scripts/check-core-imports.test.ts 回归测试；CLI 主流程仅在本模块
@@ -20,7 +22,45 @@ export const FORBIDDEN_MODULE_RULES = [
   { name: 'better-sqlite3', test: (spec) => spec === 'better-sqlite3' },
   { name: '@anthropic-ai/*', test: (spec) => spec === '@anthropic-ai' || spec.startsWith('@anthropic-ai/') },
   { name: 'uuid', test: (spec) => spec === 'uuid' || spec.startsWith('uuid/') },
+  // crypto / node:crypto：核心包禁止直接 import Node 内建随机/哈希源，
+  // 随机 id 一律经 SK.IdGenerator 注入（同 randomUUID 直调禁令的 import 侧兜底）。
+  { name: 'crypto', test: (spec) => spec === 'crypto' || spec === 'node:crypto' },
 ];
+
+/**
+ * 【C1 禁 phase 守卫】—— 仅对 conversation/ 子树生效（见下方 isConversationFile）。
+ *
+ * 背景：phase / active / settling / terminal / StreamSession 属 C2 运行时实时相位概念，
+ * C1 只记持久事实，严禁出现相位建模（见 CLAUDE.md「C1 专属铁律 · 禁 phase」）。
+ *
+ * 匹配策略与已知局限（务必按强/弱信号分层，控制误伤）：
+ *   - StreamSession：强信号标识符，C2 运行时专有名，核心内无任何合法用途 → 全词匹配 \bStreamSession\b。
+ *   - .phase：强信号成员访问，相位字段读写的直接形态 → 匹配 \.phase\b（成员访问，非裸词 phase，
+ *     避免误伤 phaseName / multiphase 等无关标识；裸 phase 变量名极少见，本轮不扫以免过度）。
+ *   - 'settling' / 'terminal'：相位字面量，仅匹配字符串字面量形态（带引号），且这两词在 C1 领域
+ *     无任何合法语义（会话/消息领域不存在 settling/terminal 概念）→ 匹配 ['"]settling['"] / ['"]terminal['"]。
+ *   - 'active'：【刻意不纳入】。它是 C1 SessionStatus 的合法取值（active | archived，见
+ *     chat-session.ts），若禁将大面积误伤会话本体。相位语境下的 'active' 由更强的 StreamSession /
+ *     .phase 信号兜底，无需再扫裸 'active'，这是精度取舍后的已知留白。
+ *
+ * 统一在去注释后的代码文本上匹配（复用 stripLineComment），避免中文注释里提及相位词被误报。
+ */
+export const FORBIDDEN_PHASE_RULES = [
+  { name: 'StreamSession', pattern: /\bStreamSession\b/ },
+  { name: '.phase', pattern: /\.phase\b/ },
+  { name: `'settling'`, pattern: /['"]settling['"]/ },
+  { name: `'terminal'`, pattern: /['"]terminal['"]/ },
+];
+
+/**
+ * 判定文件是否落在 conversation/ 子树（禁 phase 规则的作用域）。
+ * 入参为相对 repo 根、已归一化为 `/` 分隔的路径。
+ * 用 `/conversation/` 片段匹配，确保只命中 packages/core/src/conversation/ 下文件，
+ * 不波及 SK（domain/error、ports/clock 等）与 apps/api。
+ */
+export function isConversationFile(relPath) {
+  return relPath.includes('/conversation/');
+}
 
 /**
  * 禁用的运行时 API 直调规则：源码文本命中即失败。
@@ -66,10 +106,16 @@ function stripLineComment(line) {
 }
 
 /**
- * 扫描单个文件内容，返回 violations 数组（含 module 规则与 API 规则命中）。
+ * 扫描单个文件内容，返回 violations 数组（含 module 规则、API 规则、及 conversation 专属 phase 规则命中）。
  * 每条 violation 形如 { line, rule, detail }；不含文件名（由调用方补充）。
+ *
+ * @param content 文件文本
+ * @param options.isConversation 该文件是否落在 conversation/ 子树；
+ *   为 true 时额外施加【C1 禁 phase 守卫】（FORBIDDEN_PHASE_RULES）。默认 false，
+ *   确保 SK / apps 代码 0 误伤。
  */
-export function scanContent(content) {
+export function scanContent(content, options = {}) {
+  const { isConversation = false } = options;
   const violations = [];
   const lines = content.split(/\r?\n/);
 
@@ -90,6 +136,15 @@ export function scanContent(content) {
     for (const rule of FORBIDDEN_API_RULES) {
       if (rule.pattern.test(codePart)) {
         violations.push({ line: lineNo, rule: `禁用运行时 API: ${rule.name}`, detail: codePart.trim() });
+      }
+    }
+
+    // 【C1 禁 phase 守卫】：仅 conversation/ 子树生效，同样在去注释文本上匹配。
+    if (isConversation) {
+      for (const rule of FORBIDDEN_PHASE_RULES) {
+        if (rule.pattern.test(codePart)) {
+          violations.push({ line: lineNo, rule: `禁用 phase 标识: ${rule.name}`, detail: codePart.trim() });
+        }
       }
     }
   });
@@ -143,7 +198,8 @@ function main() {
   for (const file of files) {
     const rel = relative(repoRoot, file).split('\\').join('/');
     const content = readFileSync(file, 'utf8');
-    for (const v of scanContent(content)) {
+    // conversation/ 子树额外施加【C1 禁 phase 守卫】。
+    for (const v of scanContent(content, { isConversation: isConversationFile(rel) })) {
       violations.push({ file: rel, ...v });
     }
   }
@@ -153,7 +209,7 @@ function main() {
     for (const v of violations) {
       console.error(`  ✗ ${v.file}:${v.line}  ${v.rule}  →  ${v.detail}`);
     }
-    console.error('\npackages/core 必须零框架依赖：禁止 import @nestjs/* / better-sqlite3 / @anthropic-ai/* / uuid，禁止直调 Date.now() / randomUUID。\n');
+    console.error('\npackages/core 必须零框架依赖：禁止 import @nestjs/* / better-sqlite3 / @anthropic-ai/* / uuid / crypto，禁止直调 Date.now() / randomUUID；conversation/ 子树严禁出现 C2 运行时相位标识（StreamSession / .phase / \'settling\' / \'terminal\'）。\n');
     process.exit(1);
   }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error - .mjs 零依赖脚本无类型声明，测试仅消费其导出的纯函数。
-import { extractModuleSpecifiers, scanContent } from './check-core-imports.mjs';
+import { extractModuleSpecifiers, scanContent, isConversationFile } from './check-core-imports.mjs';
 
 /** 断言 violations 中存在指定 rule 前缀且 detail 命中。 */
 function hasRule(violations, rulePrefix) {
@@ -78,5 +78,72 @@ describe('scanContent — 不误报', () => {
   it('行内 // 注释里提及 Date.now() / randomUUID 不误报', () => {
     expect(scanContent(`// 注意不要用 Date.now()`)).toHaveLength(0);
     expect(scanContent(`const x = 1; // 后续可换成 randomUUID`)).toHaveLength(0);
+  });
+});
+
+describe('scanContent — 禁用 crypto import 规则', () => {
+  it(`import 'crypto' 命中 crypto 规则`, () => {
+    expect(hasRule(scanContent(`import { createHash } from 'crypto';`), '禁用 import: crypto')).toBe(true);
+  });
+
+  it(`import 'node:crypto' 命中 crypto 规则`, () => {
+    expect(hasRule(scanContent(`import { randomUUID } from 'node:crypto';`), '禁用 import: crypto')).toBe(true);
+  });
+
+  it(`'crypto-js' 等他包不误报为 crypto 规则`, () => {
+    expect(hasRule(scanContent(`import CryptoJS from 'crypto-js';`), '禁用 import: crypto')).toBe(false);
+  });
+});
+
+describe('scanContent — C1 禁 phase 守卫（仅 conversation 子树）', () => {
+  const asConv = { isConversation: true };
+
+  it('conversation 样本含 StreamSession 被拦', () => {
+    expect(
+      hasRule(scanContent(`import type { StreamSession } from '../runtime.js';`, asConv), '禁用 phase 标识: StreamSession'),
+    ).toBe(true);
+  });
+
+  it('conversation 样本含 .phase 成员访问被拦', () => {
+    expect(hasRule(scanContent(`if (session.phase === 'active') {}`, asConv), '禁用 phase 标识: .phase')).toBe(true);
+  });
+
+  it(`conversation 样本含 'settling' / 'terminal' 相位字面量被拦`, () => {
+    expect(hasRule(scanContent(`const p = 'settling';`, asConv), `禁用 phase 标识: 'settling'`)).toBe(true);
+    expect(hasRule(scanContent(`const p = 'terminal';`, asConv), `禁用 phase 标识: 'terminal'`)).toBe(true);
+  });
+
+  it('干净 conversation 样本（ChatSession / SessionStatus）通过', () => {
+    // 'active' 是 C1 SessionStatus 合法取值，绝不能被禁；ChatSession 非 StreamSession，不应误伤。
+    const clean = [
+      `export enum SessionStatus { ACTIVE = 'active', ARCHIVED = 'archived' }`,
+      `export interface ChatSession { readonly status: SessionStatus; }`,
+      `const withRuntimeStatus = { ...good, runtimeStatus: 'active' };`,
+    ].join('\n');
+    expect(scanContent(clean, asConv)).toHaveLength(0);
+  });
+
+  it('conversation 注释里提及相位词不误报', () => {
+    expect(scanContent(`// 这属于 C2 的 StreamSession.phase，C1 不建模 settling/terminal`, asConv)).toHaveLength(0);
+  });
+
+  it('phaseName / multiphase 等无关标识不被 .phase 规则误伤', () => {
+    expect(scanContent(`const phaseName = 'x'; const multiphase = true;`, asConv)).toHaveLength(0);
+  });
+
+  it('phase 规则对非 conversation 文件（SK / apps）0 生效', () => {
+    // 默认 isConversation=false：即便文本含相位标识也不拦，确保 SK / apps 0 误伤。
+    expect(scanContent(`const s: StreamSession = x; if (s.phase === 'settling') {}`)).toHaveLength(0);
+  });
+});
+
+describe('isConversationFile', () => {
+  it('命中 conversation 子树路径', () => {
+    expect(isConversationFile('packages/core/src/conversation/domain/message/message.ts')).toBe(true);
+  });
+
+  it('SK 路径不命中', () => {
+    expect(isConversationFile('packages/core/src/domain/error/error-code.ts')).toBe(false);
+    expect(isConversationFile('apps/api/src/main.ts')).toBe(false);
   });
 });

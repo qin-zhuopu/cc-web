@@ -74,14 +74,14 @@ development_status:
   epic-sk-4-retrospective: optional
 
   # ===================== C1 · Conversation =====================
-  epic-c1-1: backlog
-  c1-1-1-define-chat-session-entity-and-enums: backlog
-  c1-1-2-define-message-entity-and-token-usage: backlog
-  c1-1-3-define-stream-status-and-ban-phase: backlog
-  c1-1-4-define-title-origin-and-override-predicate: backlog
-  c1-1-5-define-c1-message-keys: backlog
-  c1-1-6-define-driving-and-driven-ports: backlog
-  c1-1-7-forbidden-import-static-guard: backlog
+  epic-c1-1: done
+  c1-1-1-define-chat-session-entity-and-enums: done
+  c1-1-2-define-message-entity-and-token-usage: done
+  c1-1-3-define-stream-status-and-ban-phase: done
+  c1-1-4-define-title-origin-and-override-predicate: done
+  c1-1-5-define-c1-message-keys: done
+  c1-1-6-define-driving-and-driven-ports: done
+  c1-1-7-forbidden-import-static-guard: done
   epic-c1-1-retrospective: optional
 
   epic-c1-2: backlog

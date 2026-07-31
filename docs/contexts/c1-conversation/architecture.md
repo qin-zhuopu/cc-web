@@ -89,8 +89,8 @@ export interface ChatSession {
   readonly source: SessionSource;         // user | task（默认 user）
   readonly workingDirectory: string;      // 会话归属的工作目录
   readonly projectName: string;
-  readonly createdAt: string;             // ISO，来自 SK.Clock
-  readonly updatedAt: string;             // ISO，来自 SK.Clock；touch 更新
+  readonly createdAt: number;             // epoch 毫秒，来自 SK.Clock.now()
+  readonly updatedAt: number;             // epoch 毫秒，来自 SK.Clock.now()；touch 更新
 }
 ```
 
@@ -130,7 +130,7 @@ export interface Message {
   readonly sessionId: SessionId;
   readonly role: MessageRole;              // user | assistant
   readonly content: MessageContent;        // 富类型值对象（见 3.4）
-  readonly createdAt: string;              // 来自 SK.Clock
+  readonly createdAt: number;              // epoch 毫秒，来自 SK.Clock.now()
   readonly streamStatus: StreamStatus;     // 持久生命周期（见 3.5）；非 assistant 恒 completed
   readonly tokenUsage?: TokenUsage;        // C2 落库时提供的投影；无值=未记录，不显 0
   readonly isHeartbeatAck: boolean;        // 渲染标记，不入 prompt 投影
@@ -284,7 +284,7 @@ export interface SessionRepository {
   listAll(query?: ListSessionsQuery): Promise<ReadonlyArray<ChatSession>>;
   getById(id: SessionId): Promise<ChatSession | undefined>;
   save(session: ChatSession): Promise<void>;      // upsert 会话本体字段
-  touch(id: SessionId, updatedAt: string): Promise<void>;
+  touch(id: SessionId, updatedAt: number): Promise<void>;
   setTitle(id: SessionId, title: string, origin: TitleOrigin): Promise<void>;
   setStatus(id: SessionId, status: SessionStatus): Promise<void>;
   delete(id: SessionId): Promise<void>;           // 级联由适配器/DB FK 保证
