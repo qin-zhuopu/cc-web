@@ -4,6 +4,7 @@ node_modules/
 dist/
 .next/
 build/
+*.tsbuildinfo
 # env
 .env
 .env.local
