@@ -54,10 +54,10 @@ development_status:
   sk-1-3-define-sk-i18n-message-keys: review
   epic-sk-1-retrospective: optional
 
-  epic-sk-2: backlog
-  sk-2-1-clock-port: backlog
-  sk-2-2-id-generator-port: backlog
-  sk-2-3-platform-port: backlog
+  epic-sk-2: done
+  sk-2-1-clock-port: done
+  sk-2-2-id-generator-port: done
+  sk-2-3-platform-port: done
   epic-sk-2-retrospective: optional
 
   epic-sk-3: backlog
