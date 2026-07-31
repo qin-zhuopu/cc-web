@@ -148,13 +148,13 @@ development_status:
   c2-3-4-phase-changed-event-from-core: done
   epic-c2-3-retrospective: optional
 
-  epic-c2-4: backlog
-  c2-4-1-start-stream-create-session-register: backlog
-  c2-4-2-runtime-selection-via-provider-repo: backlog
-  c2-4-3-history-projection-via-c1-prompt-view: backlog
-  c2-4-4-single-active-constraint-abort-old: backlog
-  c2-4-5-event-consumption-and-terminal-states: backlog
-  c2-4-6-persist-to-c1-via-usecase: backlog
+  epic-c2-4: done
+  c2-4-1-start-stream-create-session-register: done
+  c2-4-2-runtime-selection-via-provider-repo: done
+  c2-4-3-history-projection-via-c1-prompt-view: done
+  c2-4-4-single-active-constraint-abort-old: done
+  c2-4-5-event-consumption-and-terminal-states: done
+  c2-4-6-persist-to-c1-via-usecase: done
   epic-c2-4-retrospective: optional
 
   epic-c2-5: backlog

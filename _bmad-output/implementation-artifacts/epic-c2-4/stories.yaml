@@ -1,0 +1,84 @@
+# Epic C2-4 · 发起回合 StartStream（Runtime 选择 + 历史投影 + 单 active + 事件消费 + 落 C1）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：registry+发起骨架 → Runtime 选择 → 历史投影 → 单 active 约束 → 事件消费终态 → 落 C1。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 只落 StartStreamService 用例编排 + StreamSessionRegistry 内存注册表（纯逻辑），复用 c2-1 端口/c2-2 聚合根/c2-3 事件工具；
+# 不实现具体 Runtime 适配器/EventMapper（属 c2-6）、不实现 AbortStream force-abort 编排（属 c2-5）、不接 NestJS DI（属 c2-7）、不接 SDK/进程/HTTP。
+- id: "c2-4-1"
+  title: 实现 StreamSessionRegistry 内存注册表 + StartStreamService 发起骨架
+  description: >-
+    实现活跃回合的内存注册表 StreamSessionRegistry（register/get/getActiveBySession/delete 最小索引 API，纯内存 Map、非持久层）
+    与 StartStreamService.start 发起骨架：streamId 经注入 SK.IdGenerator 生成，创建 StreamSession(active)（startedAt 经聚合根注入的 SK.Clock）注册进 registry。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 packages/core/src/agent-runtime/usecases/stream-session-registry.ts 与 usecases/start-stream.ts。
+    StartStreamService implements StartStreamUseCase（c2-1 端口），构造注入 registry + AgentRuntimePort + ProviderReadPort +
+    C1 的 GetSessionHistoryUseCase/AppendMessageUseCase + SK.IdGenerator + SK.Clock + SK.ErrorClassifier。streamId 一律经注入 IdGenerator，
+    绝不直调 randomUUID/Date.now（StreamSession 构造已用注入 Clock 取 startedAt）。registry 是纯内存 Map、非持久层、不落库、不 import C1 持久 StreamStatus（NFR-2/AC-15）。
+    本故事只落 registry API + start 骨架（生成 id→建 StreamSession(active)→注册），后续故事补 Runtime 选择/历史/单active/事件消费/落库。
+    复用 c2-2 的 StreamSession（值 import）、c2-1 端口（import type）；核心零框架；import type + .js（NodeNext）。
+    单测用假 IdGenerator/假 Clock/假 AgentRuntimePort：断言 start 的 streamId 来自 IdGenerator、StreamSession phase=active 且已注册进 registry、无 Date/uuid 直调。
+- id: "c2-4-2"
+  title: Runtime 选择——ProviderReadPort 解析 → RuntimeKind（发起时锁定）
+  description: >-
+    在 start 内经只读 ProviderReadPort.resolve(providerId) 拿 ResolvedProviderView，把 protocol 映射为 RuntimeKind
+    并在发起时锁定（落入 StreamSession.runtimeKind 与 RuntimeRunRequest.runtimeKind）。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    提供纯映射 protocol → RuntimeKind（anthropic→CLAUDE_SDK；openai-compatible/xai/openrouter/bedrock/vertex/google 等 HTTP 协议→NATIVE，
+    以 architecture §3.6/§5.3 语义为准；unknown/无法判定的降级路径要明确、不臆造、可归 ClassifiedError 或按文档默认，勿静默选错 Runtime）。
+    复用既有 RuntimeKind enum（StreamSession/AgentRuntimePort 已引用的那一处），绝不新增第三处、不改签名。
+    只读纪律：只调 ProviderReadPort.resolve，绝不调任何写方法、绝不 import C7 实现。发起时锁定后 runtimeKind 不再变。
+    单测（假 ProviderReadPort 返回不同 protocol 的 ResolvedProviderView）断言：不同 protocol 路由到不同 RuntimeKind、锁定进 StreamSession/RuntimeRunRequest。
+    import type + .js；核心零框架；不接 SDK。
+- id: "c2-4-3"
+  title: 历史投影——只经 C1.GetSessionHistoryUseCase.getPromptView
+  description: >-
+    在 start 内经 C1.GetSessionHistoryUseCase.getPromptView({ sessionId }) 拿喂模型历史投影（已剔除 render-only 标记），
+    原样作为 RuntimeRunRequest.promptView 传给 AgentRuntimePort.run。C2 绝不直读 messages 表 / 不持有 Repository。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    只经 C1 用例取历史（AC-13）：调 getPromptView 而非 getHistory（喂模型要剔除 render-only），传入的 sessionId 来自 StartStreamInput。
+    拿到的 PromptMessage 投影原样进 RuntimeRunRequest.promptView，C2 不重新加工/过滤历史（投影语义归 C1）。核心不出现任何 SQL/表访问/Repository。
+    单测（假 GetSessionHistoryUseCase）断言：start 只调 getPromptView、sessionId 正确传入、返回投影原样进 RuntimeRunRequest.promptView。
+    复用 c2-1 的 conversation-ports 别名（import type）；import type + .js；核心零框架。
+- id: "c2-4-4"
+  title: 单 active 约束——新回合前先 abort 旧 active 回合
+  description: >-
+    start 创建新回合前先查 registry 是否已有该 sessionId 的 active 回合；若有则先 abort 旧回合
+    （翻 terminal(aborted)，经 SK.ErrorClassifier 归 ABORTED），保证同一 session 至多一个 active。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    AC-11 单 active 约束：start 前经 registry.getActiveBySession(sessionId) 查旧 active 回合，有则调 c2-2 的 StreamSession.abort
+    （复用聚合根同步无条件翻终态，reason 经 SK.ErrorClassifier 归 ABORTED），再建新回合注册。绝不重写迁移规则。
+    本故事只做「聚合根层同步 abort 旧回合」，不实现 AbortStream 的 force-abort 安全网先行/best-effort interrupt/reconcile（分属 c2-5）——那是完整中断编排，本故事仅保证单 active 不变量。
+    单测断言：同一 sessionId 连续两次 start 后，旧回合 phase=terminal(aborted)、canAccept()=true，新回合 phase=active，registry 中该 session 的 active 回合恰为新回合。
+    import type + .js；假 Clock/IdGenerator/AgentRuntimePort/ErrorClassifier 替身；核心零框架。
+- id: "c2-4-5"
+  title: 事件消费与终态归因
+  description: >-
+    订阅 AgentRuntimePort.run(request) 的已归一 AgentStreamEvent 异步流，逐事件 session.apply(event) 累积并对外转发
+    （作为 StartStreamResult.events）；据流结束方式驱动终态：正常结束→complete、abortSignal→abort(ABORTED)、error 事件→fail(classified)、
+    idle/tool timeout→按 TerminalReason 归因。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    只消费已归一 AgentStreamEvent（EventMapper 在适配器内，属 c2-6），绝不解析任何 SDK/SSE/JSON-RPC 原生帧。
+    逐事件 session.apply(event) 累积产物，同时把事件对外转发构成 StartStreamResult.events（AsyncIterable）。终态路径：
+    流正常耗尽→session.complete(tokenUsage 投影)；abortSignal 触发→session.abort(经 ErrorClassifier 的 ABORTED)；上游 error 事件→session.fail(classified)；
+    idle-timeout/tool-timeout→走 abort/fail 但 TerminalReason 归因 TIMEOUT/PROCESS（复用 c2-1 terminal-reason，不重写）。result 事件 token 经 apply 投影（无上报留空不填 0，AC-9）。
+    单测（假 AgentRuntimePort 产可控事件序列）断言各终态 phase：正常→terminal(completed)、error→terminal(errored) 且 error 为分类结果、abortSignal→terminal(aborted)；token 投影不填 0。
+    复用 c2-2 apply/迁移方法（值 import）、c2-3 事件工具；import type + .js；核心零框架；不接 SDK。
+- id: "c2-4-6"
+  title: 落 C1——终态非空且非 autoTrigger 才经 AppendMessageUseCase.append
+  description: >-
+    回合落终态后经 buildFinalContent(artifacts) 投影最终内容；非 null 且非 autoTrigger 时经 C1.AppendMessageUseCase.append
+    落一条 assistant 消息（携 tokenUsage 投影，无上报不填 0），并按终态映射持久 StreamStatus；空回合不落。详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    AC-12 只经用例写：终态经 buildFinalContent(artifacts)（c2-1，复用不重写）投影 finalContent，非 null 且 input.autoTrigger 非真时经 C1.AppendMessageUseCase.append
+    落一条 assistant 消息（role=assistant、content 来自 finalContent、tokenUsage 为投影或省略——无上报不填 0，AC-9）。终态→持久 StreamStatus 映射（§6.4）：
+    completed→'completed'、aborted→'interrupted'、errored→'error'，经 AppendMessageUseCase（不传 phase 本身、不直写库、不持有 Repository）。
+    空回合（buildFinalContent 返回 null）不落 assistant 消息；autoTrigger 回合跳过落库（FR-2）。回合终态后从 registry 摘除（防泄漏），registry 仍非持久层。
+    单测（假 AppendMessageUseCase）断言：非空终态→恰调一次 append（字段正确）、三终态→StreamStatus 映射正确、空回合→append 不被调、autoTrigger→跳过落库。
+    复用 c2-1 buildFinalContent（值 import）与 C1 用例端口（import type）；import type + .js；核心零框架；不接 DB/DI。

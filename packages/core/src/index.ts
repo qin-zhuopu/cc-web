@@ -164,3 +164,8 @@ export { projectResultTokenUsage } from './agent-runtime/domain/event/result-pro
 // EventMapper 契约（外部 Runtime 原始事件 → 内部 AgentStreamEvent；未知降级返回 null，c2-3-2）
 export type { EventMapper } from './agent-runtime/ports/driven/event-mapper.js';
 export { dropUnknownEvent } from './agent-runtime/ports/driven/event-mapper.js';
+// ---- C2-E4 StartStream 用例编排 + 活跃回合内存注册表 ----
+// StartStreamService 实现 StartStreamUseCase（发起回合纯编排，零框架）；resolveRuntimeKind 为 protocol→RuntimeKind 纯映射。
+export { StartStreamService, resolveRuntimeKind } from './agent-runtime/usecases/start-stream.js';
+// StreamSessionRegistry：活跃回合的纯内存索引（非持久层，NFR-2/AC-15）。
+export { StreamSessionRegistry } from './agent-runtime/usecases/stream-session-registry.js';
