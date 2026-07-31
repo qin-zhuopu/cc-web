@@ -40,7 +40,7 @@
 #   断线补发：客户端带 Last-Event-ID 重连，NestJS 从文件日志补发 seq 之后的事件。
 
 generated: 2026-07-31
-last_updated: 2026-07-31
+last_updated: 2026-08-01
 project: codepilot-web
 project_key: NOKEY
 tracking_system: file-system
@@ -114,11 +114,11 @@ development_status:
   c1-5-5-token-usage-projection-only: done
   epic-c1-5-retrospective: optional
 
-  epic-c1-6: backlog
-  c1-6-1-conversation-module-di-wiring-forwardref: backlog
-  c1-6-2-session-and-message-controllers: backlog
-  c1-6-3-sqlite-session-and-message-repositories: backlog
-  c1-6-4-consumer-contract-write-via-usecase: backlog
+  epic-c1-6: done
+  c1-6-1-conversation-module-di-wiring-forwardref: done
+  c1-6-2-session-and-message-controllers: done
+  c1-6-3-sqlite-session-and-message-repositories: done
+  c1-6-4-consumer-contract-write-via-usecase: done
   epic-c1-6-retrospective: optional
 
   # ===================== C2 · AgentRuntime =====================
