@@ -92,11 +92,11 @@ development_status:
   c1-2-5-message-content-to-plain-text: done
   epic-c1-2-retrospective: optional
 
-  epic-c1-3: backlog
-  c1-3-1-manage-session-create-get-by-id: backlog
-  c1-3-2-list-sessions-with-source-filter: backlog
-  c1-3-3-archive-unarchive-delete-cascade: backlog
-  c1-3-4-touch-session-updated-at: backlog
+  epic-c1-3: done
+  c1-3-1-manage-session-create-get-by-id: done
+  c1-3-2-list-sessions-with-source-filter: done
+  c1-3-3-archive-unarchive-delete-cascade: done
+  c1-3-4-touch-session-updated-at: done
   epic-c1-3-retrospective: optional
 
   epic-c1-4: backlog

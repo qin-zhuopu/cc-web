@@ -47,3 +47,5 @@ export type { HistoryQuery, GetSessionHistoryUseCase } from './conversation/port
 export type { SessionRepository } from './conversation/ports/driven/session-repository.js';
 export type { MessageRepository } from './conversation/ports/driven/message-repository.js';
 export type { TitleGenerationInput, TitleGeneratorPort } from './conversation/ports/driven/title-generator-port.js';
+// 用例服务（application service）
+export { ManageSessionService } from './conversation/usecases/manage-session.js';

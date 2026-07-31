@@ -1,0 +1,63 @@
+# Epic C1-3 · 会话生命周期用例（create/getById/list/archive/unarchive/delete/touch）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 排序：create+getById（服务地基）→ list（过滤/排序）→ archive/unarchive/delete（状态+级联）→ touch（顶前）。
+- id: "c1-3-1"
+  title: 实现 ManageSessionService.create/getById
+  description: >-
+    在 usecases/manage-session.ts 落地 ManageSessionService implements ManageSessionUseCase 的
+    create（id←IdGenerator、时间←Clock、缺省标题走 defaultTitle key）与 getById（透传 Repository）。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——时间/id 来源纪律 + 缺省标题 key：create 用 id←IdGenerator.next()、now←Clock.now()
+    （createdAt=updatedAt=now）构造 ChatSession，核心严禁直调 Date.now()/new Date()/crypto.randomUUID()
+    （FR-1.4/AC-1）；title 缺省时用 C1_MESSAGE_KEYS.sessionDefaultTitle（'c1.session.defaultTitle'）+
+    titleOrigin=default，mode 缺省 code、source 缺省 user、status=active，随后 SessionRepository.save
+    （对齐 architecture §6 create 编排、§4.1 CreateSessionInput 缺省语义）。getById(id) 透传
+    SessionRepository.getById，不存在返回 undefined 不抛。service 经构造函数注入 SessionRepository、
+    MessageRepository、Clock、IdGenerator（依赖倒置，核心不 new 具体实现，对齐 architecture §7）。
+    测试用内存 FakeSessionRepository（Map）+ FrozenClock（固定时刻）+ SequentialIdGenerator（序列）假替身，
+    断言 create 用注入的 id/时间、缺省标题走 key、getById 读回一致，纯逻辑单测无需真实 DB。
+    类型-only import 用 import type + .js 扩展名；不实现 rename 的标题状态机语义（属 c1-4）。
+- id: "c1-3-2"
+  title: 实现 list 按 updatedAt 倒序 + source 过滤
+  description: >-
+    在 ManageSessionService 实现 list(query?)：按 updatedAt 倒序，默认过滤 source='task'，
+    显式请求 task 源可取到。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——list 按 updatedAt 倒序、默认过滤 task 源：ListSessionsQuery 的 sources 缺省为 [user]
+    （过滤 task，FR-1.6），透传 status/limit，结果按 updatedAt 倒序，委托 SessionRepository.listAll(query)
+    （对齐 architecture §4.1 ListSessionsQuery、§5.1 listAll）。测试断言：task 会话默认不出现于列表、
+    显式传 sources 含 task 时能取到（反例可断言）；按 status 过滤时归档会话不入默认 active 列表
+    （FR-1.6/AC-2）。缺省语义在用例落地，不预填假空串。用内存 FakeSessionRepository + FrozenClock/
+    SequentialIdGenerator 假替身构造注入做纯逻辑单测。类型-only import 用 import type + .js 扩展名。
+- id: "c1-3-3"
+  title: 实现 archive/unarchive/delete 级联删消息
+  description: >-
+    在 ManageSessionService 实现 archive/unarchive（切换 status）与 delete（级联删除会话消息）。
+    详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——delete 级联删消息保证一致性：archive 委托 SessionRepository.setStatus(id, archived)、
+    unarchive 委托 setStatus(id, active)；delete 先 MessageRepository.deleteBySession(id) 再
+    SessionRepository.delete(id)，级联删除其消息（对齐现有 ON DELETE CASCADE、architecture §5.1/§5.2/§6、
+    NFR-7）。测试断言：归档会话不出现在默认 active 列表；删除会话后其消息经 MessageRepository.listBySession
+    不可读（级联一致性，AC-2/AC-12）。service 构造注入 SessionRepository+MessageRepository，用内存
+    FakeSessionRepository（Map）+ FakeMessageRepository（Map<SessionId, Message[]>）假替身做纯逻辑单测，
+    无需真实 DB FK。类型-only import 用 import type + .js 扩展名。
+- id: "c1-3-4"
+  title: 实现 touch 仅更新 updatedAt
+  description: >-
+    在 ManageSessionService 实现 touch(id)：用 Clock.now() 只更新会话 updatedAt 把会话顶前，
+    不改动其它字段。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——touch 只更新 updatedAt、用同一 Clock 值：touch 用 now←Clock.now() 委托
+    SessionRepository.touch(id, now)，仅更新 updatedAt，严禁改动 title/status/source/titleOrigin 等
+    其它字段（对齐 architecture §4.1 touch、§6、FR-1.3）。测试断言 touch 后 updatedAt 等于注入
+    FrozenClock 的值、其它字段不变（AC-7，供 c1-5 追加消息后顶前用例复用）。核心不直调 Date.now()，
+    时间经注入 Clock。用内存 FakeSessionRepository + FrozenClock 假替身构造注入做纯逻辑单测。
+    类型-only import 用 import type + .js 扩展名。
