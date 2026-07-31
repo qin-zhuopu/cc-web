@@ -65,6 +65,9 @@ export { TerminalReasonCode, expectedErrorCode, isUserAbort, isErrorReason } fro
 // 累积产物值对象 + 最终内容投影纯函数
 export type { TurnArtifacts } from './agent-runtime/domain/stream/turn-artifacts.js';
 export { buildFinalContent } from './agent-runtime/domain/stream/turn-artifacts.js';
+// 一次回合的聚合根 StreamSession（class 值）+ 只读快照/初始化参数（type）
+export { StreamSession } from './agent-runtime/domain/stream/stream-session.js';
+export type { StreamSessionSnapshot, StreamSessionInit } from './agent-runtime/domain/stream/stream-session.js';
 // 统一事件模型（14 类判别联合 + 值对象）；TokenUsage 与 C1 同名，别名 RuntimeTokenUsage 避免桶冲突
 export type {
   AgentStreamEvent,

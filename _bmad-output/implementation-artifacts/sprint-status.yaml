@@ -133,12 +133,12 @@ development_status:
   c2-1-8-define-c2-message-keys: done
   epic-c2-1-retrospective: optional
 
-  epic-c2-2: backlog
-  c2-2-1-implement-stream-session-aggregate: backlog
-  c2-2-2-implement-four-transition-methods-idempotent: backlog
-  c2-2-3-implement-abort-invariant-578-regression: backlog
-  c2-2-4-implement-can-accept-gate: backlog
-  c2-2-5-implement-apply-event-accumulation: backlog
+  epic-c2-2: done
+  c2-2-1-implement-stream-session-aggregate: done
+  c2-2-2-implement-four-transition-methods-idempotent: done
+  c2-2-3-implement-abort-invariant-578-regression: done
+  c2-2-4-implement-can-accept-gate: done
+  c2-2-5-implement-apply-event-accumulation: done
   epic-c2-2-retrospective: optional
 
   epic-c2-3: backlog
