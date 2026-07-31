@@ -1,0 +1,86 @@
+# Epic C2-5 · 中断回合 AbortStream（GitHub #578 结构化切断）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：force-abort 调度端口 → 幂等门+安全网先行+markSettling → best-effort interrupt+reconcile+#578回归 → 到期兜底abort+forceKillTurn → 关句柄通知 → idle/tool timeout 归因。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 只落 AbortStreamService 用例编排 + ForceAbortScheduler 端口契约（纯逻辑），复用 c2-1 端口/reconcilePhase、c2-2 聚合根、c2-4 registry、SK.ErrorClassifier；
+# 不实现具体 Runtime 适配器 interrupt/forceKillTurn/late-unregister（属 c2-6）、不写 scheduler 的 setTimeout 生产实现/不接 NestJS DI（属 c2-7）、不接 SDK/进程/HTTP。
+- id: "c2-5-1"
+  title: 定义 ForceAbortScheduler 调度抽象端口（核心零框架下可 spy 的定时器）
+  description: >-
+    定义 force-abort 安全网所需的可注入调度抽象端口（schedule(callback, delayMs): cancel），
+    核心零框架禁直调 setTimeout，生产实现（setTimeout）属 c2-7，本故事只落端口契约 + FORCE_ABORT_MS 常量。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 packages/core/src/agent-runtime/ports/driven/force-abort-scheduler.ts：接口 ForceAbortScheduler
+    { schedule(callback: () => void, delayMs: number): () => void }（返回 cancel 函数），并定义 FORCE_ABORT_MS 常量（以 architecture §4.2 为准，读文档确认数值/是否改由构造注入）。
+    核心零框架铁律：绝不 import node:timers、绝不直调 setTimeout/setInterval（守卫会拦）。这是为「core 里安排延时且 AC-4 可 spy 先行」设计的抽象——生产用 setTimeout（属 c2-7），测试用手动触发假件。
+    新建 force-abort-scheduler.test.ts：用一个最小假 scheduler 实现契约，断言 schedule 记录被安排的 callback/delayMs、可手动 fire 触发回调、cancel 后不再触发。import type + .js；readonly；术语中文。
+    不接 SDK/DI，不实现 setTimeout 生产实现。不改 index.ts（合并阶段处理）。不跑 npm run test（合并阶段统一跑）。
+- id: "c2-5-2"
+  title: AbortStreamService 幂等门 + force-abort 无条件先行 + markSettling
+  description: >-
+    实现 AbortStreamService implements AbortStreamUseCase 的 abort(streamId) 前半：phase 非 active 幂等返回；
+    active 则【无条件先行】经 ForceAbortScheduler.schedule 安排 force-abort 安全网（早于且独立于 interrupt），再 markSettling。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 packages/core/src/agent-runtime/usecases/abort-stream.ts：class AbortStreamService implements AbortStreamUseCase（c2-1 端口），
+    构造注入 AgentRuntimePort + StreamSessionRegistry（c2-4）+ ForceAbortScheduler（c2-5-1）+ SK.ErrorClassifier + SK.Clock（对齐 architecture §8）。
+    abort(streamId)：① registry.get(streamId) 取 session，无 session 或 !isActive(snapshot().phase) → 幂等 return（FR-3.1，no-op）；
+    ② 【#578 时序铁律】无条件先行 scheduler.schedule(forceAbortCallback, FORCE_ABORT_MS) 安排安全网——这一步必须早于且独立于任何 interrupt 调用，
+    绝不把 session.abort 或 schedule 排进 interrupt(...) 的 .then/.finally/.catch（#578 根因就是排进 .finally）；③ session.markSettling()（FR-1.5）。
+    本故事 forceAbortCallback 可先留占位（到期兜底逻辑 c2-5-4 补），interrupt 调用 c2-5-3 补——但安排安全网的时序位置本故事就要正确（先于 interrupt）。
+    复用 c2-2 聚合根 markSettling、c2-1 isActive；绝不重写迁移。单测（假 scheduler+spy 调用序列、假 registry、FrozenClock）：
+    非 active 回合 abort=no-op（schedule/markSettling 均未调）；active 回合 abort：schedule 调用序列早于任何 interrupt（AC-4，用共享调用序列数组 spy 断言）、markSettling 被调、phase=settling。
+    核心零框架、无 setTimeout/Date.now 直调；import type + .js；术语中文。不改 index.ts、不跑 npm run test。
+- id: "c2-5-3"
+  title: best-effort 优雅 interrupt + reconcilePhase 收敛 + #578 端到端回归
+  description: >-
+    abort 安排安全网+markSettling 后，经 AgentRuntimePort.interrupt(turnRef) 发 best-effort 优雅中断，
+    拿 runtimeStatus 经 reconcilePhase 收敛（terminal 翻终态 / running·null 不纠正等安全网）；interrupt 挂起/抛错绝不阻塞相位翻转。含 #578 真实 interrupt 永挂端到端回归。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    编辑 abort-stream.ts：markSettling 后经注入的 AgentRuntimePort.interrupt(turnRef) 发优雅中断——turnRef 由核心以 { streamId } 构造（TurnRef.native 可选，句柄由适配器按 streamId 内部解析，核心不碰句柄）。
+    interrupt 返回 Promise<string|null> 权威 runtimeStatus → 经 c2-1 reconcilePhase(runtimeStatus, session.snapshot().phase) 收敛：
+    返回 terminal 相位则据子态翻终态（completed→session.complete / aborted→session.abort / errored→session.fail，经 ErrorClassifier 归因）；返回 null（running/unknown）不纠正、交安全网兜底。
+    【#578 时序铁律】interrupt 挂起/抛错绝不阻塞相位翻转：.catch 只吞错（可经 RuntimeLog 记录），绝不在 .then/.finally/.catch 里把 phase 翻回 active、绝不把安全网安排挪到 interrupt 之后。
+    复用 c2-1 reconcilePhase（不重写映射）、c2-2 聚合根迁移方法。单测：interrupt 返回 'interrupted'→terminal(aborted)、'idle'→terminal(completed)、'error'→terminal(errored)、'running'/null→不纠正（仍 settling）。
+    【#578 招牌回归 AC-2，必须真断言】假 AgentRuntimePort.interrupt 返回永不 resolve 的 Promise + 假 ForceAbortScheduler（手动 fire）/假 Clock 推进 → 断言 abort 编排走完后 session phase=terminal(aborted)、canAccept()=true（interrupt 永挂仍被安全网兜底翻终态、composer 解锁）。非空断言。
+    核心零框架；import type + .js；术语中文。不改 index.ts、不跑 npm run test。
+- id: "c2-5-4"
+  title: force-abort 到期兜底——仍 active 则 abort(ABORTED) + forceKillTurn
+  description: >-
+    实现 force-abort 安全网到期回调：若回合仍 active（interrupt 未收敛）→ session.abort(经 ErrorClassifier 归 ABORTED) 无条件翻 terminal(aborted) + runtime.forceKillTurn(turnRef) 兜底关句柄；
+    已非 active → 回调 no-op（幂等）。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    编辑 abort-stream.ts 把 c2-5-2 的 forceAbortCallback 占位补全：到期时 if isActive(session.snapshot().phase) → session.abort(classifyAbort(errorClassifier))（构造 name='AbortError' 交 classify 归 ErrorCode.ABORTED）+ runtime.forceKillTurn({ streamId })（FR-3.5 兜底关句柄）；
+    否则（已 terminal/settling 收敛）→ no-op。回合收敛后应 cancel 未到期安全网（用 c2-5-1 schedule 返回的 cancel 函数）避免多余触发，但即便未 cancel，聚合根 abort 幂等（terminal 后 no-op）也保证安全——两层防线都要在（cancel + 幂等）。
+    归因经 SK.ErrorClassifier 归 ABORTED，绝不手拼 ClassifiedError。复用 c2-2 聚合根 abort（幂等无条件翻终态）、c2-1 isActive。
+    单测（假 scheduler 手动 fire + 假 AgentRuntimePort spy）：interrupt 永挂→fire 定时器→session.abort(ABORTED)（phase=terminal(aborted)、canAccept=true）+ forceKillTurn 被调（AC-6）；
+    interrupt 已让回合 terminal→fire 定时器回调 no-op（幂等、不二次翻，phase 不变）；abort 归因 ClassifiedError.code===ABORTED（AC-5，与真实错误 code 不同）；收敛后 cancel 被调（安全网不多余触发）。
+    核心零框架、无 setTimeout/Date.now 直调；import type + .js；术语中文。不改 index.ts、不跑 npm run test。
+- id: "c2-5-5"
+  title: 关 turn/句柄通知 + late-unregister no-op 契约（核心侧）
+  description: >-
+    确保 abort 路径必通知适配器关闭 turn/thread/Query 句柄：优雅路径经 interrupt(turnRef)、兜底路径经 forceKillTurn(turnRef)；
+    核心只按 streamId 传 turnRef、调端口方法，不持有/不解释 native 句柄。late-unregister no-op 属适配器语义（c2-6），本故事只保证核心侧通知契约。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    本故事在 abort-stream.ts 现有编排上补齐/固化「abort 必通知适配器关句柄」的契约与测试，不新增复杂逻辑：
+    确认优雅路径 interrupt({streamId}) 与兜底路径 forceKillTurn({streamId}) 都传入正确 streamId 的 turnRef；核心绝不触碰 TurnRef.native 结构（native 由适配器 c2-6 解析）。
+    late-unregister（旧 lockId teardown 不 evict 新 turn 句柄）为 no-op 是适配器 c2-6 侧语义，本故事不在核心实现它，仅在注释/测试注明该契约边界归属。
+    单测（假 AgentRuntimePort spy）：abort 优雅收敛路径 interrupt 被调且 turnRef.streamId 正确；abort 兜底路径 forceKillTurn 被调且 turnRef.streamId 正确；核心未读取 native 字段（可断言传入 turnRef 仅含 streamId 或 native 未被核心消费）。
+    复用既有 AgentRuntimePort（c2-1）；import type + .js；核心零框架；术语中文。不改 index.ts、不跑 npm run test。
+- id: "c2-5-6"
+  title: idle-timeout / tool-timeout 归因区分（走 abort 翻终态但归因不同）
+  description: >-
+    idle-timeout 与 tool-timeout 都走 abort 路径翻终态，但归因不同（idle→TIMEOUT、tool→PROCESS，以 architecture/terminal-reason 为准）；
+    核心侧落「给定超时信号 → 正确归因翻终态」的归类逻辑，三路（user-abort/idle/tool）ClassifiedError.code 可区分。详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    在 abort-stream.ts（或同目录纯函数）落 idle-timeout / tool-timeout 归因：读 architecture §6.2 与 domain/stream/terminal-reason.ts 确认权威归类
+    （idle-timeout→TIMEOUT、tool-timeout→PROCESS/按文档；user-abort→ABORTED）。归因一律经 SK.ErrorClassifier.classify（构造含相应语义的错误：timeout 语义→TIMEOUT、spawn/process 语义→PROCESS、AbortError→ABORTED），绝不手拼 ClassifiedError。
+    这两类超时都走 session.abort/fail 翻终态（复用 c2-2 聚合根），本故事只落「给定超时信号→正确归因翻终态」的核心归类，不造假定时器/不实现真实 idle·tool 计时机制（依赖具体 Runtime，属 c2-6）。
+    单测：user-abort→ABORTED、idle-timeout→TIMEOUT、tool-timeout→PROCESS 三路 ClassifiedError.code / TerminalReasonCode 互不相同（AC-5）；三路都翻终态、canAccept()=true。
+    复用 c2-1 terminal-reason、SK.ErrorClassifier（不重写归类）；import type + .js；核心零框架；术语中文。不改 index.ts、不跑 npm run test。

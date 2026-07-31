@@ -157,13 +157,13 @@ development_status:
   c2-4-6-persist-to-c1-via-usecase: done
   epic-c2-4-retrospective: optional
 
-  epic-c2-5: backlog
-  c2-5-1-abort-stream-idempotent: backlog
-  c2-5-2-force-abort-safety-net-first: backlog
-  c2-5-3-best-effort-interrupt-and-reconcile: backlog
-  c2-5-4-abort-classified-as-aborted: backlog
-  c2-5-5-abort-notify-adapter-close-handle: backlog
-  c2-5-6-idle-and-tool-timeout-attribution: backlog
+  epic-c2-5: done
+  c2-5-1-abort-stream-idempotent: done
+  c2-5-2-force-abort-safety-net-first: done
+  c2-5-3-best-effort-interrupt-and-reconcile: done
+  c2-5-4-abort-classified-as-aborted: done
+  c2-5-5-abort-notify-adapter-close-handle: done
+  c2-5-6-idle-and-tool-timeout-attribution: done
   epic-c2-5-retrospective: optional
 
   epic-c2-6: backlog

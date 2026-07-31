@@ -33,3 +33,11 @@
 - source_spec: `epic-c1-5/SPEC.md`
   summary: getPromptView 对 taskRunId 的剥离过宽——剔除条件为「凡带 taskRunId 者整条剔除」，依赖「带 taskRunId 必为纯 marker」这一未在类型层固化的约定。建议在 architecture §3.3 或字段处把该前提写死，避免真实内容挂 taskRunId 时被误剔。
   evidence: C1-E5 对抗评审 low 项。当前与现有字段语义自洽、可接受，但约定未固化有后续误用风险。
+
+- source_spec: `epic-c2-5/SPEC.md`
+  summary: 【correct-course 候选】超时终态的 terminalReason.code 被记成 USER_ABORTED。AbortStreamService.settleTimeout 只能复用 c2-2 聚合根的 StreamSession.abort()，而该方法硬编码 TerminalReasonCode.USER_ABORTED（stream-session.ts:290）。于是 idle/tool 超时回合的 error.code 虽正确（TIMEOUT/PROCESS），但 terminalReason.code 恒为 USER_ABORTED，与 terminal-reason.ts 的 isUserAbort() 语义矛盾——消费方若用 isUserAbort(terminalReason.code) 判定会把超时误判成「用户主动停的」。建议走 correct-course 给聚合根加带归因码的 abort 重载（如 abort(reason, terminalReasonCode?)）或超时专用迁移方法。
+  evidence: C2-E5 对抗评审 nitpick #1（非阻断）。error.code 归因正确（AC-5 据此满足、测试已覆盖），仅 terminalReason.code 这一路误标。根因在 c2-2 已冻结的聚合根 abort 硬编码归因码，超出 c2-5「只复用不改聚合根」范围，故延后而非本 epic 擅改。
+
+- source_spec: `epic-c2-5/SPEC.md`
+  summary: AbortStreamService 注入的 SK.Clock 当前为死依赖（abort-stream.ts 内 void this.clock，settledAt 由 StreamSession 自带 Clock 记）；settleTimeout 是服务公有方法但未在 AbortStreamUseCase 端口声明（c2-7 接线若需从端口触发超时归因要补端口方法，定时触发机制属 c2-6）。
+  evidence: C2-E5 对抗评审 nitpick #2/#3（非阻断）。Clock 构造注入以备后续故事、符合「一次性注入」意图但当前无用途；settleTimeout 不在端口属架构 loose end，本 epic 定时触发不在范围内，可接受。

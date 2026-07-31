@@ -169,3 +169,9 @@ export { dropUnknownEvent } from './agent-runtime/ports/driven/event-mapper.js';
 export { StartStreamService, resolveRuntimeKind } from './agent-runtime/usecases/start-stream.js';
 // StreamSessionRegistry：活跃回合的纯内存索引（非持久层，NFR-2/AC-15）。
 export { StreamSessionRegistry } from './agent-runtime/usecases/stream-session-registry.js';
+// ---- C2-E5 AbortStream 中断用例编排 + force-abort 调度端口 ----
+// AbortStreamService 实现 AbortStreamUseCase（#578 编排层切断：force-abort 无条件先行 + interrupt 不阻塞相位翻转）。
+export { AbortStreamService } from './agent-runtime/usecases/abort-stream.js';
+// ForceAbortScheduler：force-abort 安全网延时调度抽象（driven port）；FORCE_ABORT_MS 缺省到期延时常量。
+export type { ForceAbortScheduler } from './agent-runtime/ports/driven/force-abort-scheduler.js';
+export { FORCE_ABORT_MS } from './agent-runtime/ports/driven/force-abort-scheduler.js';
