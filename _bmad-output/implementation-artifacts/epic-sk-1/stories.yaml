@@ -1,0 +1,31 @@
+# Epic SK-1 · 结构化错误分类 —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+- id: "sk-1-1"
+  title: 定义 16 类错误码与领域类型
+  description: >-
+    落地 ErrorCode 枚举（architecture.md §3.1 全 16 类）与 ClassifiedError 值对象
+    （code/messageKey/retryable/cause?/detail?），置于 domain/error/，零框架 import。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    核心包铁律：domain/error/ 下不得出现 @nestjs/*、better-sqlite3、@anthropic-ai/*、
+    uuid、Date.now、randomUUID。类型即契约，只导出类型与常量，不含实现逻辑。
+- id: "sk-1-2"
+  title: 实现 ErrorClassifier 分类逻辑
+  description: >-
+    实现 classify(error: unknown): ClassifiedError，把任意异常映射为 16 类之一，
+    无法识别归 UNKNOWN 且永不抛；相同输入结果一致；NETWORK/TIMEOUT/RATE_LIMIT/UNAVAILABLE
+    的 retryable 为 true。详见 SPEC.md 的 CAP-2。
+  invoke_dev_with: >-
+    必须提供 16 个代表性异常样本的表驱动单测逐一命中预期类，并含一条 UNKNOWN 兜底断言
+    （永不抛）与一条确定性断言（同输入连续两次分类结果相等）。
+- id: "sk-1-3"
+  title: 定义 SK i18n 消息键常量
+  description: >-
+    定义 SK_MESSAGE_KEYS 常量表，为 16 类 ErrorCode 各提供唯一 sk.error.* 键
+    （architecture.md §3.3），常量只读。详见 SPEC.md 的 CAP-3。
+  invoke_dev_with: >-
+    仅贡献键常量，不含任何 locale 文案表（文案由 apps/api 适配器提供）。
+    单测断言每个 ErrorCode 有且仅有一个键、键集合无重复。

@@ -1,0 +1,200 @@
+# generated: 2026-07-31
+# last_updated: 2026-07-31
+# project: codepilot-web
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: 史诗尚未开始
+#   - in-progress: 史诗正在进行
+#   - done: 史诗下所有故事完成
+#
+# Story Status:
+#   - backlog: 故事只存在于史诗文件中
+#   - ready-for-dev: 故事文件已在 stories 目录创建
+#   - in-progress: 开发者正在实现
+#   - review: 待代码评审
+#   - done: 完成
+#   - deferred: 本期范围外，明确延后（非 backlog：已决策不做，接口保留）
+#
+# Retrospective Status:
+#   - optional: 可做但非必需
+#   - done: 已完成
+#
+# 本期范围说明（Phase 4，SK -> C1 -> C2 三上下文 + 验收链路）：
+# ============================================================
+# - 依赖顺序：SK（无依赖）-> C1（依赖 SK + C2.TitleGenerator 接口）
+#             -> C2（依赖 SK + C1 用例 + C7.ProviderRepository 只读）。
+# - C1<->C2 循环依赖在 NestJS 接线层用 forwardRef 解，核心包只单向 import type。
+# - C2 本期只实现 ClaudeSdkRuntimeAdapter；Native/Codex 适配器 deferred，
+#   但 AgentRuntimePort 接口 + RuntimeRouter 保留，将来加新 Runtime 不改核心。
+# - C7.ProviderRepository 本期未做，用 apps/api 里的最小只读 stub 顶替
+#   （返回写死的单个 Claude provider 配置）；核心只 import type，接口保留。
+# - 新增 EPIC-ACCEPT（验收链路）：替代前端，用 CLI + curl 打通端到端。
+#   接口三件套：GET /api/sessions/:id/stream（挂载）、POST /api/sessions/stream
+#   （新建，带完整 query options + 首句）、POST /api/sessions/:id/messages（发消息）。
+#   一式三份：SSE 实时推 / 文件事件日志（append-only，带 seq）/ 一轮结束落 SQLite。
+#   断线补发：客户端带 Last-Event-ID 重连，NestJS 从文件日志补发 seq 之后的事件。
+
+generated: 2026-07-31
+last_updated: 2026-07-31
+project: codepilot-web
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # ===================== SK · Shared Kernel =====================
+  epic-sk-1: in-progress
+  sk-1-1-define-16-error-codes-and-domain-types: review
+  sk-1-2-implement-error-classifier: review
+  sk-1-3-define-sk-i18n-message-keys: in-progress
+  epic-sk-1-retrospective: optional
+
+  epic-sk-2: backlog
+  sk-2-1-clock-port: backlog
+  sk-2-2-id-generator-port: backlog
+  sk-2-3-platform-port: backlog
+  epic-sk-2-retrospective: optional
+
+  epic-sk-3: backlog
+  sk-3-1-redactor-port-and-builtin-rules: backlog
+  sk-3-2-runtime-log-ring-buffer-port: backlog
+  sk-3-3-runtime-log-auto-redact-on-write: backlog
+  epic-sk-3-retrospective: optional
+
+  epic-sk-4: backlog
+  sk-4-1-translation-port: backlog
+  sk-4-2-shared-kernel-module-di-wiring: backlog
+  sk-4-3-forbidden-import-static-guard: backlog
+  sk-4-4-pilot-c7-consume-error-classifier: deferred
+  epic-sk-4-retrospective: optional
+
+  # ===================== C1 · Conversation =====================
+  epic-c1-1: backlog
+  c1-1-1-define-chat-session-entity-and-enums: backlog
+  c1-1-2-define-message-entity-and-token-usage: backlog
+  c1-1-3-define-stream-status-and-ban-phase: backlog
+  c1-1-4-define-title-origin-and-override-predicate: backlog
+  c1-1-5-define-c1-message-keys: backlog
+  c1-1-6-define-driving-and-driven-ports: backlog
+  c1-1-7-forbidden-import-static-guard: backlog
+  epic-c1-1-retrospective: optional
+
+  epic-c1-2: backlog
+  c1-2-1-define-content-block-union: backlog
+  c1-2-2-implement-encode-decode-content-roundtrip: backlog
+  c1-2-3-decode-content-dirty-input-downgrade: backlog
+  c1-2-4-tool-result-and-tool-use-input-fidelity: backlog
+  c1-2-5-message-content-to-plain-text: backlog
+  epic-c1-2-retrospective: optional
+
+  epic-c1-3: backlog
+  c1-3-1-manage-session-create-get-by-id: backlog
+  c1-3-2-list-sessions-with-source-filter: backlog
+  c1-3-3-archive-unarchive-delete-cascade: backlog
+  c1-3-4-touch-session-updated-at: backlog
+  epic-c1-3-retrospective: optional
+
+  epic-c1-4: backlog
+  c1-4-1-set-title-by-user: backlog
+  c1-4-2-generate-title-by-ai-with-override-rule: backlog
+  c1-4-3-generate-by-ai-graceful-degradation: backlog
+  c1-4-4-confirm-c1-does-not-build-prompt: backlog
+  epic-c1-4-retrospective: optional
+
+  epic-c1-5: backlog
+  c1-5-1-append-message-and-touch: backlog
+  c1-5-2-update-stream-status-with-transition-check: backlog
+  c1-5-3-get-history-ordered-with-pagination: backlog
+  c1-5-4-get-prompt-view-strip-render-only: backlog
+  c1-5-5-token-usage-projection-only: backlog
+  epic-c1-5-retrospective: optional
+
+  epic-c1-6: backlog
+  c1-6-1-conversation-module-di-wiring-forwardref: backlog
+  c1-6-2-session-and-message-controllers: backlog
+  c1-6-3-sqlite-session-and-message-repositories: backlog
+  c1-6-4-consumer-contract-write-via-usecase: backlog
+  epic-c1-6-retrospective: optional
+
+  # ===================== C2 · AgentRuntime =====================
+  epic-c2-1: backlog
+  c2-1-1-define-stream-phase-and-terminal-substate: backlog
+  c2-1-2-define-can-transition-phase-and-reconcile: backlog
+  c2-1-3-define-terminal-reason-and-error-mapping: backlog
+  c2-1-4-define-turn-artifacts-and-build-final-content: backlog
+  c2-1-5-define-agent-stream-event-union: backlog
+  c2-1-6-define-runtime-kind-and-ports: backlog
+  c2-1-7-forbidden-import-static-guard: backlog
+  c2-1-8-define-c2-message-keys: backlog
+  epic-c2-1-retrospective: optional
+
+  epic-c2-2: backlog
+  c2-2-1-implement-stream-session-aggregate: backlog
+  c2-2-2-implement-four-transition-methods-idempotent: backlog
+  c2-2-3-implement-abort-invariant-578-regression: backlog
+  c2-2-4-implement-can-accept-gate: backlog
+  c2-2-5-implement-apply-event-accumulation: backlog
+  epic-c2-2-retrospective: optional
+
+  epic-c2-3: backlog
+  c2-3-1-land-14-agent-stream-events: backlog
+  c2-3-2-event-mapper-contract-and-unknown-downgrade: backlog
+  c2-3-3-result-event-token-usage-projection: backlog
+  c2-3-4-phase-changed-event-from-core: backlog
+  epic-c2-3-retrospective: optional
+
+  epic-c2-4: backlog
+  c2-4-1-start-stream-create-session-register: backlog
+  c2-4-2-runtime-selection-via-provider-repo: backlog
+  c2-4-3-history-projection-via-c1-prompt-view: backlog
+  c2-4-4-single-active-constraint-abort-old: backlog
+  c2-4-5-event-consumption-and-terminal-states: backlog
+  c2-4-6-persist-to-c1-via-usecase: backlog
+  epic-c2-4-retrospective: optional
+
+  epic-c2-5: backlog
+  c2-5-1-abort-stream-idempotent: backlog
+  c2-5-2-force-abort-safety-net-first: backlog
+  c2-5-3-best-effort-interrupt-and-reconcile: backlog
+  c2-5-4-abort-classified-as-aborted: backlog
+  c2-5-5-abort-notify-adapter-close-handle: backlog
+  c2-5-6-idle-and-tool-timeout-attribution: backlog
+  epic-c2-5-retrospective: optional
+
+  epic-c2-6: backlog
+  c2-6-1-claude-sdk-runtime-adapter-and-event-mapper: backlog
+  c2-6-2-native-runtime-adapter-and-sse-mapper: deferred
+  c2-6-3-codex-runtime-adapter-process-isolation: deferred
+  c2-6-4-codex-fatal-config-fail-fast: deferred
+  c2-6-5-codex-event-mapper: deferred
+  c2-6-6-runtime-router: backlog
+  c2-6-7-fault-isolation-across-runtimes: deferred
+  epic-c2-6-retrospective: optional
+
+  epic-c2-7: backlog
+  c2-7-1-generate-title-service-non-streaming: backlog
+  c2-7-2-permission-request-event-emit: backlog
+  c2-7-3-permission-decision-relay: backlog
+  c2-7-4-agent-runtime-module-di-forwardref: backlog
+  c2-7-5-driving-adapters-chat-permission-runtime-controllers: backlog
+  c2-7-6-terminal-to-c1-stream-status-mapping: backlog
+  epic-c2-7-retrospective: optional
+
+  # ===================== EPIC-ACCEPT · 验收链路（新增，替代前端） =====================
+  # SSE 为中心的三件套接口 + 一式三份 + 断线补发 + CLI 监听客户端 + C7 stub。
+  epic-accept: backlog
+  accept-1-provider-repository-claude-stub: backlog
+  accept-2-sse-broadcast-hub-per-session: backlog
+  accept-3-event-log-file-adapter-append-with-seq: backlog
+  accept-4-post-stream-create-session-with-options: backlog
+  accept-5-get-stream-attach-existing-session: backlog
+  accept-6-post-messages-trigger-turn-broadcast: backlog
+  accept-7-resume-replay-via-last-event-id: backlog
+  accept-8-cli-listen-client-new-and-attach: backlog
+  accept-9-end-to-end-smoke-new-stream-send-reconnect: backlog
+  epic-accept-retrospective: optional

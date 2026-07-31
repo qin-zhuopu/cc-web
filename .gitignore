@@ -11,7 +11,8 @@ build/
 # BMad 个人配置（团队共享的 config.toml 提交，个人的不提交）
 _bmad/config.user.toml
 _bmad/custom/config.user.toml
-_bmad-output/
+# 注：_bmad-output/（规划与实施产物：spec / sprint-status / deferred-work）纳入版本控制，
+# 以支撑 dev-auto 无人值守链路的进度可追溯与中断恢复。
 # logs
 *.log
 # os
