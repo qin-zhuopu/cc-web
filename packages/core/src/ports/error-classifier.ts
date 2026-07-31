@@ -9,8 +9,9 @@
 //   - retryable 仅对 NETWORK/TIMEOUT/RATE_LIMIT/UNAVAILABLE 为 true，其余为 false。
 //   - 每个结果携带 code + messageKey + retryable，并把原始输入放入 cause。
 //   - messageKey 取 sk.error.* 形式，与 ErrorCode 一一对应（对齐 architecture.md §3.3）。
-//     本故事用内部映射产出；sk-1-3 落地 SK_MESSAGE_KEYS 后此处改为引用它（消除重复真相源）。
+//     引用 SK_MESSAGE_KEYS 作为全项目唯一键真相源（sk-1-3 落地，消除重复映射）。
 import { ErrorCode } from '../domain/error/error-code.js';
+import { SK_MESSAGE_KEYS } from '../domain/error/message-keys.js';
 import type { ClassifiedError } from '../domain/error/classified-error.js';
 
 /**
@@ -20,29 +21,6 @@ import type { ClassifiedError } from '../domain/error/classified-error.js';
 export interface ErrorClassifier {
   classify(error: unknown): ClassifiedError;
 }
-
-/**
- * 内部 messageKey 映射：与 architecture.md §3.3 逐字对齐（sk.error.* 驼峰化）。
- * 不对外导出为公共常量表——sk-1-3 才落地只读 SK_MESSAGE_KEYS 并让此处引用。
- */
-const MESSAGE_KEYS: Readonly<Record<ErrorCode, string>> = {
-  [ErrorCode.NETWORK]: 'sk.error.network',
-  [ErrorCode.TIMEOUT]: 'sk.error.timeout',
-  [ErrorCode.RATE_LIMIT]: 'sk.error.rateLimit',
-  [ErrorCode.AUTH]: 'sk.error.auth',
-  [ErrorCode.PERMISSION]: 'sk.error.permission',
-  [ErrorCode.INVALID_REQUEST]: 'sk.error.invalidRequest',
-  [ErrorCode.NOT_FOUND]: 'sk.error.notFound',
-  [ErrorCode.CONFLICT]: 'sk.error.conflict',
-  [ErrorCode.SERVER]: 'sk.error.server',
-  [ErrorCode.UNAVAILABLE]: 'sk.error.unavailable',
-  [ErrorCode.QUOTA_EXCEEDED]: 'sk.error.quotaExceeded',
-  [ErrorCode.RESOURCE_LIMIT]: 'sk.error.resourceLimit',
-  [ErrorCode.FILESYSTEM]: 'sk.error.filesystem',
-  [ErrorCode.PROCESS]: 'sk.error.process',
-  [ErrorCode.ABORTED]: 'sk.error.aborted',
-  [ErrorCode.UNKNOWN]: 'sk.error.unknown',
-};
 
 /** 可重试错误码集合：只有这 4 类值得重试。 */
 const RETRYABLE_CODES: ReadonlySet<ErrorCode> = new Set([
@@ -264,7 +242,7 @@ export const defaultErrorClassifier: ErrorClassifier = {
     const code = resolveCode(error);
     return {
       code,
-      messageKey: MESSAGE_KEYS[code],
+      messageKey: SK_MESSAGE_KEYS[code],
       retryable: RETRYABLE_CODES.has(code),
       cause: error,
     };

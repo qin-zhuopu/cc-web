@@ -48,10 +48,10 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # ===================== SK · Shared Kernel =====================
-  epic-sk-1: in-progress
+  epic-sk-1: done
   sk-1-1-define-16-error-codes-and-domain-types: review
   sk-1-2-implement-error-classifier: review
-  sk-1-3-define-sk-i18n-message-keys: in-progress
+  sk-1-3-define-sk-i18n-message-keys: review
   epic-sk-1-retrospective: optional
 
   epic-sk-2: backlog

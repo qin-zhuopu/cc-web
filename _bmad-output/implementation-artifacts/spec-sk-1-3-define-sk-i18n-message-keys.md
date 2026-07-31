@@ -2,8 +2,8 @@
 title: 'sk-1-3 定义 SK i18n 消息键常量'
 type: 'feature'
 created: '2026-07-31'
-status: 'in-progress'
-baseline_commit: 'd47b2d2'
+status: 'done'
+baseline_commit: 'f32da60'
 review_loop_iteration: 0
 context:
   - '{project-root}/docs/contexts/shared-kernel/architecture.md'
@@ -58,10 +58,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `packages/core/src/domain/error/message-keys.ts` -- 定义只读 `SK_MESSAGE_KEYS`，16 类各唯一 `sk.error.*` 键，逐字对齐 §3.3；用 `satisfies Readonly<Record<ErrorCode, string>>` 保证全覆盖与类型安全。
-- [ ] `packages/core/src/ports/error-classifier.ts` -- 删除私有 `MESSAGE_KEYS`，import 并引用 `SK_MESSAGE_KEYS`；classify 行为不变。
-- [ ] `packages/core/src/domain/error/message-keys.test.ts` -- 断言：每个 ErrorCode 有唯一键、键集合无重复、键形如 `sk.error.*`、键集合恰好等于 ErrorCode 值集合（无多余）。
-- [ ] `packages/core/src/index.ts` -- 追加导出 `SK_MESSAGE_KEYS`。
+- [x] `packages/core/src/domain/error/message-keys.ts` -- 定义只读 `SK_MESSAGE_KEYS`，16 类各唯一 `sk.error.*` 键，逐字对齐 §3.3；用 `satisfies Readonly<Record<ErrorCode, string>>` 保证全覆盖与类型安全。
+- [x] `packages/core/src/ports/error-classifier.ts` -- 删除私有 `MESSAGE_KEYS`，import 并引用 `SK_MESSAGE_KEYS`；classify 行为不变。
+- [x] `packages/core/src/domain/error/message-keys.test.ts` -- 断言：每个 ErrorCode 有唯一键、键集合无重复、键形如 `sk.error.*`、键集合恰好等于 ErrorCode 值集合（无多余）。
+- [x] `packages/core/src/index.ts` -- 追加导出 `SK_MESSAGE_KEYS`。
 
 **Acceptance Criteria:**
 - Given `ErrorCode` 全部 16 值，when 查 `SK_MESSAGE_KEYS`，then 每个值有且仅有一个 `sk.error.*` 键，键集合无重复、无多余。
@@ -79,3 +79,17 @@ context:
 - §3.3 权威键映射（逐字）：NETWORK→`sk.error.network`、TIMEOUT→`sk.error.timeout`、RATE_LIMIT→`sk.error.rateLimit`、AUTH→`sk.error.auth`、PERMISSION→`sk.error.permission`、INVALID_REQUEST→`sk.error.invalidRequest`、NOT_FOUND→`sk.error.notFound`、CONFLICT→`sk.error.conflict`、SERVER→`sk.error.server`、UNAVAILABLE→`sk.error.unavailable`、QUOTA_EXCEEDED→`sk.error.quotaExceeded`、RESOURCE_LIMIT→`sk.error.resourceLimit`、FILESYSTEM→`sk.error.filesystem`、PROCESS→`sk.error.process`、ABORTED→`sk.error.aborted`、UNKNOWN→`sk.error.unknown`。
 - 用 `as const` 得到字面量类型 + 只读；再 `satisfies Readonly<Record<ErrorCode, string>>` 让「漏掉任一 ErrorCode」变成编译错误，把全覆盖约束前移到类型层。
 - sk-1-2 的私有 `MESSAGE_KEYS` 与本表逐字相同（sk-1-2 已按 §3.3 定稿），故收敛为引用后 classify 行为零变化，风险极低。
+
+## Suggested Review Order
+
+- 只读键常量表：as const + satisfies 把全覆盖约束前移到编译期
+  [`message-keys.ts:15`](../../packages/core/src/domain/error/message-keys.ts#L15)
+
+- 分类器收敛：删私有映射，改引用 SK_MESSAGE_KEYS（单一真相源）
+  [`error-classifier.ts:245`](../../packages/core/src/ports/error-classifier.ts#L245)
+
+- 键表测试：全覆盖 / 唯一 / 命名 / 无多余
+  [`message-keys.test.ts:1`](../../packages/core/src/domain/error/message-keys.test.ts#L1)
+
+- 桶文件导出
+  [`index.ts:3`](../../packages/core/src/index.ts#L3)
