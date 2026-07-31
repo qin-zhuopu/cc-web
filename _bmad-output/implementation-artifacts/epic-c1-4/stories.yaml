@@ -1,0 +1,65 @@
+# Epic C1-4 · 标题来源状态机（setByUser + generateByAi + 覆盖规则 + 降级）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 排序：setByUser（最简写路径地基）→ generateByAi+覆盖规则（核心状态机）→ 降级（失败路径）→ 反例确认 C1 不拼 prompt。
+- id: "c1-4-1"
+  title: 实现 SetSessionTitleService.setByUser
+  description: >-
+    在 usecases/set-session-title.ts 落地 SetSessionTitleService implements SetSessionTitleUseCase
+    的 setByUser（写入标题并标 titleOrigin='user'，此后 AI 不可覆盖）。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——用户手改标题 origin=user：setByUser(id, title) 读会话本体，覆盖判定复用
+    domain/session/title-origin.ts 的 canOverrideTitle(current, 'user')（user 优先级最高，对任意
+    current 恒 true）→ 委托 SessionRepository.setTitle(id, title, 'user') 写入，返回更新后的 ChatSession
+    （对齐 architecture §6 setByUser、FR-2.3/AC-3）。写路径经 SK.RuntimeLog（source='c1.session'，脱敏）。
+    service 经构造函数注入 SessionRepository、GetSessionHistoryUseCase、TitleGeneratorPort、Clock、
+    RuntimeLog（依赖倒置，核心不 new 具体实现、不直调 Date.now()，对齐 architecture §7）。测试用内存
+    FakeSessionRepository（Map）+ FrozenClock + 假 RuntimeLog 假替身，断言写入的 title 与 origin='user'，
+    纯逻辑单测无需真实 DB。类型-only import 用 import type + .js 扩展名；不实现 generateByAi（属 c1-4-2）。
+- id: "c1-4-2"
+  title: 实现 generateByAi + canOverrideTitle 覆盖规则
+  description: >-
+    在 SetSessionTitleService 实现 generateByAi(id)：投影 recentMessages → 调 C2.TitleGeneratorPort →
+    仅当 titleOrigin ∈ {default, ai} 时写入并标 'ai'，user 态不被覆盖。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——AI 生成受 canOverrideTitle 约束、user 态不被覆盖：generateByAi(id) 读会话 → 若
+    canOverrideTitle(current, 'ai') 为 false（即 current==='user'）直接返回原会话、不调 TitleGenerator、
+    不写库（user 态保护，AC-3）→ 否则从 GetSessionHistoryUseCase.getPromptView 投影出 recentMessages
+    （{role, text} 纯文本）→ 调 TitleGeneratorPort.generateTitle(input) → 成功则 SessionRepository.setTitle
+    (id, title, 'ai')（对齐 architecture §6 generateByAi 编排、FR-2.1/2.2）。覆盖判定必须复用
+    domain/session/title-origin.ts 的 canOverrideTitle，不得在用例重写优先级。测试用可注入返回固定标题的假
+    TitleGeneratorPort + 内存 FakeSessionRepository + 假 GetSessionHistoryUseCase + FrozenClock 假替身，
+    断言两条路径结果不同：titleOrigin='default' 会话被 AI 标题覆盖并标 'ai'、titleOrigin='user' 会话不被覆盖
+    （反例 smoke，AC-3）。类型-only import 用 import type + .js 扩展名；降级失败路径属 c1-4-3。
+- id: "c1-4-3"
+  title: 实现 generateByAi 降级保持原标题不崩
+  description: >-
+    在 generateByAi 包裹 TitleGeneratorPort 调用做降级：生成失败/超时/不可用时保留原标题、不写库、
+    不外抛，经 SK.RuntimeLog.warn 记录。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——生成失败降级保持原标题 + RuntimeLog 记录不崩：generateByAi 用 try/catch 包裹
+    TitleGeneratorPort.generateTitle 调用；catch 到任何异常 → 不调 SessionRepository.setTitle、经
+    SK.RuntimeLog.warn（source='c1.session'，脱敏）记录降级、返回读回的原 ChatSession（对齐 architecture §6
+    「catch 则记 RuntimeLog.warn 并返回原会话」、§331 行「TitleGenerator 异常由 C1 用例就地降级，不对外抛
+    结构化错误」、FR-2.4/AC-4）。测试用可注入抛错/超时的假 TitleGeneratorPort + 内存 FakeSessionRepository +
+    假 RuntimeLog 假替身，断言标题保持不变、SessionRepository.setTitle 未被调用、用例不抛、RuntimeLog.warn
+    被调用（降级断言，AC-4）。类型-only import 用 import type + .js 扩展名。
+- id: "c1-4-4"
+  title: 确认 C1 不构造 AI 提示词只调端口
+  description: >-
+    从代码/类型/测试层面确认 SetSessionTitleService 只 import type C2.TitleGeneratorPort 并调
+    generateTitle，绝不自己拼提示词、绝不 import C2 实现、绝不调模型。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——反例断言 C1 不构造 prompt 只调端口：SetSessionTitleService 对 AI 能力的唯一触点是注入的
+    TitleGeneratorPort.generateTitle。反例断言思路——测试注入一个「记录入参」的假 TitleGeneratorPort，
+    断言 C1 传给它的是 getPromptView 投影出的 recentMessages（ReadonlyArray<{role, text}> 纯文本片段）
+    【而非】任何拼好的提示词字符串/模型参数/模板；且用例内无提示词模板、无模型/SDK 调用代码（对齐
+    architecture §5.3/§8 边界纪律、FR-2.5、epics-stories S4.4）。C1 只 import type
+    ports/driven/title-generator-port.ts，绝不 import C2 运行实现、绝不反向依赖 C2。测试用假替身断言入参形状；
+    c1-1-7 已建的禁用 import 静态守卫对 @anthropic-ai/* 等保持 0 命中。类型-only import 用 import type + .js
+    扩展名。

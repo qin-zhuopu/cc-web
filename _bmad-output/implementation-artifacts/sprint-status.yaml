@@ -99,11 +99,11 @@ development_status:
   c1-3-4-touch-session-updated-at: done
   epic-c1-3-retrospective: optional
 
-  epic-c1-4: backlog
-  c1-4-1-set-title-by-user: backlog
-  c1-4-2-generate-title-by-ai-with-override-rule: backlog
-  c1-4-3-generate-by-ai-graceful-degradation: backlog
-  c1-4-4-confirm-c1-does-not-build-prompt: backlog
+  epic-c1-4: done
+  c1-4-1-set-title-by-user: done
+  c1-4-2-generate-title-by-ai-with-override-rule: done
+  c1-4-3-generate-by-ai-graceful-degradation: done
+  c1-4-4-confirm-c1-does-not-build-prompt: done
   epic-c1-4-retrospective: optional
 
   epic-c1-5: backlog

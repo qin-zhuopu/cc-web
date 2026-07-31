@@ -49,3 +49,4 @@ export type { MessageRepository } from './conversation/ports/driven/message-repo
 export type { TitleGenerationInput, TitleGeneratorPort } from './conversation/ports/driven/title-generator-port.js';
 // 用例服务（application service）
 export { ManageSessionService } from './conversation/usecases/manage-session.js';
+export { SetSessionTitleService } from './conversation/usecases/set-session-title.js';

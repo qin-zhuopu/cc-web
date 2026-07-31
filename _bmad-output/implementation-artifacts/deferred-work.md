@@ -13,3 +13,15 @@
 - source_spec: `epic-sk-4/SPEC.md`
   summary: SK-4 的 6 个占位适配器（SystemClock/UuidGenerator/NodePlatform/RegexRedactor/RingBufferRuntimeLog/JsonTranslationTable）为 DI 装配用最小实现，需在后续 story 替换为生产级实现（真实脱敏正则、有界环形缓冲、locale 文案表等）。
   evidence: 本轮 SK-4 重点是 SharedKernelModule 接线骨架，占位适配器让 DI 图能装配、能被解析、能被替换。生产级适配器实现（含各自完整单测）属后续工作。
+
+- source_spec: `epic-c1-4/SPEC.md`
+  summary: SetSessionTitleService 注入的 Clock 未使用（死依赖）——确认「改名/AI起名是否该 bump updatedAt」的设计意图；若不需要则从该用例构造签名移除 Clock。
+  evidence: C1-E4 对抗评审 low 项。构造注入 clock 但全文无 clock.now() 调用，改标题不 touch updatedAt（与归档不 touch 一致，可能刻意）。空串标题守卫（写脏空标题）已在本轮修复。
+
+- source_spec: `epic-c1-4/SPEC.md`
+  summary: generateByAi 中 canOverrideTitle('ai') 检查为死分支（user 已早退，剩余 default/ai 对 ai 恒放行），且排在 generateTitle 调用之后——未来若新增「可覆盖为 false 但非 user」的态会白浪费一次 AI 调用；应把覆盖性判定前移到调用之前。
+  evidence: C1-E4 对抗评审 nitpick。当前防御性冗余无害。
+
+- source_spec: `epic-c1-4/SPEC.md`
+  summary: TitleOrigin 用联合字面量，而同目录 SessionStatus/Mode/Source 用 enum，同一领域枚举/联合混用偏离 architecture §3.2 字面（§3.2 写的是 enum）。建议统一（联合更契合零框架/tree-shake），若统一为联合需同步修订架构文档。
+  evidence: C1-E1/E4 对抗评审 nitpick。字面量值一致，DB/跨边界持久化兼容无碍，仅风格偏差。
