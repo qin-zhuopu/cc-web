@@ -166,13 +166,16 @@ development_status:
   c2-5-6-idle-and-tool-timeout-attribution: done
   epic-c2-5-retrospective: optional
 
-  epic-c2-6: backlog
-  c2-6-1-claude-sdk-runtime-adapter-and-event-mapper: backlog
+  # 本期只实现 CLAUDE_SDK Runtime（c2-6-1 拆 1a EventMapper + 1b RuntimeAdapter）与 RuntimeRouter（c2-6-6）；
+  # Native/Codex 适配器与跨 Runtime 故障隔离 deferred（接口/路由位保留，将来加新 Runtime 不改核心）。
+  # 连真 litellm 代理集成验证已通过（apps/api/scripts/c2-6-integration-check.mts，人在场手动跑）。
+  epic-c2-6: done
+  c2-6-1-claude-sdk-runtime-adapter-and-event-mapper: done
   c2-6-2-native-runtime-adapter-and-sse-mapper: deferred
   c2-6-3-codex-runtime-adapter-process-isolation: deferred
   c2-6-4-codex-fatal-config-fail-fast: deferred
   c2-6-5-codex-event-mapper: deferred
-  c2-6-6-runtime-router: backlog
+  c2-6-6-runtime-router: done
   c2-6-7-fault-isolation-across-runtimes: deferred
   epic-c2-6-retrospective: optional
 
