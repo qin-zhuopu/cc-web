@@ -22,9 +22,15 @@ export const FORBIDDEN_MODULE_RULES = [
   { name: 'uuid', test: (spec) => spec === 'uuid' || spec.startsWith('uuid/') },
 ];
 
-/** 禁用的运行时 API 直调规则：源码文本命中即失败。 */
+/**
+ * 禁用的运行时 API 直调规则：源码文本命中即失败。
+ * `new Date()` 仅锁「无参」形态——它等价于读系统时钟，与 Date.now()/randomUUID 同属核心内
+ * 禁用的隐式时间/随机源（见 CLAUDE.md 核心包铁律「禁止直调 Date.now()/new Date()/randomUUID」）；
+ * 带参的 `new Date(ts)`（由显式值构造，如格式化）合法，故 pattern 只匹配空括号，避免误伤。
+ */
 export const FORBIDDEN_API_RULES = [
   { name: 'Date.now(', pattern: /\bDate\.now\s*\(/ },
+  { name: 'new Date()', pattern: /\bnew\s+Date\s*\(\s*\)/ },
   { name: 'randomUUID', pattern: /\brandomUUID\b/ },
 ];
 

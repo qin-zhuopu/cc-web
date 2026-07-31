@@ -56,6 +56,12 @@ describe('scanContent — 禁用运行时 API 规则', () => {
   it('randomUUID 命中 API 规则', () => {
     expect(hasRule(scanContent(`const id = randomUUID();`), '禁用运行时 API: randomUUID')).toBe(true);
   });
+
+  it('无参 new Date() 命中 API 规则', () => {
+    expect(hasRule(scanContent(`const d = new Date();`), '禁用运行时 API: new Date()')).toBe(true);
+    // 允许空白：new  Date ( ) 仍应命中
+    expect(hasRule(scanContent(`const d = new  Date ( );`), '禁用运行时 API: new Date()')).toBe(true);
+  });
 });
 
 describe('scanContent — 不误报', () => {

@@ -4,7 +4,9 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "types": ["node"]
+    "types": ["node"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "references": [
     { "path": "../../packages/core" }

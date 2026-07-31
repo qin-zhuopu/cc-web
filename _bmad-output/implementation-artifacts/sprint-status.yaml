@@ -66,10 +66,10 @@ development_status:
   sk-3-3-runtime-log-auto-redact-on-write: done
   epic-sk-3-retrospective: optional
 
-  epic-sk-4: backlog
-  sk-4-1-translation-port: backlog
-  sk-4-2-shared-kernel-module-di-wiring: backlog
-  sk-4-3-forbidden-import-static-guard: backlog
+  epic-sk-4: done
+  sk-4-1-translation-port: done
+  sk-4-2-shared-kernel-module-di-wiring: done
+  sk-4-3-forbidden-import-static-guard: done
   sk-4-4-pilot-c7-consume-error-classifier: deferred
   epic-sk-4-retrospective: optional
 

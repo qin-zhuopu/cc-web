@@ -10,3 +10,4 @@ export type { OsType, ArchType, PlatformInfo, Platform } from './ports/platform.
 export type { Redactor } from './ports/redactor.js';
 export type { RuntimeLog } from './ports/runtime-log.js';
 export type { LogEntry, LogLevel } from './domain/log/log-entry.js';
+export type { Locale, TranslationPort } from './ports/translation-port.js';
