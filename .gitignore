@@ -1,0 +1,18 @@
+# deps
+node_modules/
+# build
+dist/
+.next/
+build/
+# env
+.env
+.env.local
+# BMad 个人配置（团队共享的 config.toml 提交，个人的不提交）
+_bmad/config.user.toml
+_bmad/custom/config.user.toml
+_bmad-output/
+# logs
+*.log
+# os
+.DS_Store
+Thumbs.db

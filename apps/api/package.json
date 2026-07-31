@@ -1,0 +1,11 @@
+{
+  "name": "@codepilot/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodePilot API（NestJS 侧）—— 本轮仅骨架，不接 DI、不含业务逻辑",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --build"
+  },
+  "license": "BUSL-1.1"
+}
