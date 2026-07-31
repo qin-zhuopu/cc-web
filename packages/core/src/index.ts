@@ -7,3 +7,6 @@ export { defaultErrorClassifier } from './ports/error-classifier.js';
 export type { Clock } from './ports/clock.js';
 export type { IdGenerator } from './ports/id-generator.js';
 export type { OsType, ArchType, PlatformInfo, Platform } from './ports/platform.js';
+export type { Redactor } from './ports/redactor.js';
+export type { RuntimeLog } from './ports/runtime-log.js';
+export type { LogEntry, LogLevel } from './domain/log/log-entry.js';

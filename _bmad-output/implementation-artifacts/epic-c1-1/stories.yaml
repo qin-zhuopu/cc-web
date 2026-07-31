@@ -1,0 +1,87 @@
+# Epic C1-1 · 会话/消息领域 + 端口骨架（禁 phase + import 守卫）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 排序：领域实体（会话→消息）→ 值对象（StreamStatus→TitleOrigin）→ i18n 键 → 端口骨架 → import 守卫。
+- id: "c1-1-1"
+  title: 定义 ChatSession 实体与枚举
+  description: >-
+    在 domain/session/ 定义 ChatSession 会话本体实体（SessionId + 10 个 readonly 会话本体字段）
+    及 SessionStatus/SessionMode/SessionSource 三枚举，签名对齐 architecture §3.1/§3.2。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    只建模会话本体 10 字段（id/title/titleOrigin/status/mode/source/workingDirectory/projectName/
+    createdAt/updatedAt），运行时/Provider/Codex 字段（sdkSessionId/codexThreadId/runtimeStatus/
+    providerId/contextSummary* 等）严禁进入 C1 领域模型（架构 §3.1 字段归属）。字段全 readonly。
+    titleOrigin 字段引用 c1-1-4 的 TitleOrigin 类型。核心零框架 import；类型-only import 用
+    import type + .js 扩展名。
+- id: "c1-1-2"
+  title: 定义 Message 实体与 TokenUsage
+  description: >-
+    在 domain/message/ 定义 Message 实体（MessageId + role/content/createdAt/streamStatus/
+    tokenUsage?/isHeartbeatAck/taskRunId?）、MessageRole 枚举与 TokenUsage 投影值对象，对齐 architecture §3.3。
+    详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    TokenUsage 是「只存不算」的投影：可选字段，无值时 undefined，严禁落假 0（AC-10 反假数据）。
+    content 字段引用 MessageContent 类型占位（其编解码实现属 epic-c1-2，本故事不实现）。
+    streamStatus 引用 c1-1-3 的 StreamStatus 类型。字段全 readonly；核心零框架 import；
+    类型-only import 用 import type + .js 扩展名。
+- id: "c1-1-3"
+  title: 定义 StreamStatus 与禁 phase
+  description: >-
+    在 domain/message/stream-status.ts 定义 StreamStatus 持久生命周期枚举（streaming/completed/
+    interrupted/error）与 canTransition 谓词，并在类型/lint 层面禁止 phase 概念，对齐 architecture §3.5。
+    详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——禁 phase：StreamStatus 只做「持久转录行生命周期」语义（这条消息最终完整/中断/出错），
+    C1 核心严禁 import、建模、出现 phase/active/settling/terminal/StreamSession 概念——「现在还在流式吗」
+    一律由 C2 回答。把持久 streamStatus 当实时相位读是现有 stop/abort 卡死根因，本故事在类型层切断（NFR-2/AC-8）。
+    canTransition 合法推进（streaming→终态）通过、非法回退拒绝，需全量单测。类型-only import 用 import type + .js。
+- id: "c1-1-4"
+  title: 定义 TitleOrigin 与覆盖判定
+  description: >-
+    在 domain/session/title-origin.ts 定义 TitleOrigin 来源枚举（default/ai/user）与
+    canOverrideTitle 覆盖优先级谓词，对齐 architecture §3.2。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    覆盖优先级 default < ai < user：canOverrideTitle(current, incoming) 判定请求来源能否覆盖当前来源。
+    user 态严禁被 ai/default 覆盖，default 可被任何来源覆盖，需全矩阵单测（AC-3）。
+    本故事只定义值对象与谓词，不含 setByUser/generateByAi 用例（属 epic-c1-4）。
+    核心零框架 import；类型-only import 用 import type + .js 扩展名。
+- id: "c1-1-5"
+  title: 定义 C1 消息键
+  description: >-
+    在 domain/message-keys.ts 定义 C1 自身 i18n 消息键常量表（c1.*，含 c1.session.defaultTitle），
+    仿 SK SK_MESSAGE_KEYS 范式（as const + 只读）。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    C1 只贡献自己的键、不含具体文案（locale 文案表在 apps/api 适配器层）。默认标题 New Chat 经 key
+    而非硬编码中英文案（NFR-5）；来源 badge 文案 key 一并纳入。以 as const 给字面量类型 + 只读，
+    仿 packages/core/src/domain/error/message-keys.ts。核心零框架 import；类型-only import 用 import type + .js。
+- id: "c1-1-6"
+  title: 定义驱动与被驱动端口
+  description: >-
+    在 ports/driving/ 定义 4 驱动端口（ManageSession/SetSessionTitle/AppendMessage/GetSessionHistory）、
+    ports/driven/ 定义 2 被驱动端口（SessionRepository/MessageRepository）+ import type 引用 C2.TitleGeneratorPort，
+    index.ts 只导出端口与领域类型，对齐 architecture §4/§5。详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——驱动/被驱动端口划分：驱动端口=上游经其读写会话/消息的用例入口（含 CreateSessionInput/
+    ListSessionsQuery/AppendMessageInput/HistoryQuery 等输入类型）；被驱动端口=由适配器实现的出站持久化契约。
+    TitleGeneratorPort 只 import type 本地引用别名（C2 定义、C2 实现），C1 绝不 import C2 实现、绝不反向依赖 C2、
+    绝不自己拼 AI 标题提示词。本故事只定义端口接口签名骨架，不含任何用例实现体（用例逻辑属 c1-3/c1-4/c1-5）。
+    index.ts 只导出端口与领域类型（无实现）。跨文件/跨包类型引用用 import type + .js 扩展名。
+- id: "c1-1-7"
+  title: import 守卫
+  description: >-
+    建立覆盖 C1 conversation 核心包的禁用 import 静态守卫，对禁用依赖与 phase 概念做 0 命中断言，
+    对齐 PRD NFR-1/NFR-2、AC-11/AC-8。详见 SPEC.md 的 CAP-7。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——守卫覆盖范围必须含整个 C1 conversation 目录。扫描项：@anthropic-ai/*、better-sqlite3、
+    @nestjs/*、Date.now(、randomUUID(、crypto（NFR-1/AC-11），以及 phase 相关标识 StreamSession/.phase/
+    active/settling/terminal（NFR-2/AC-8），全部 0 命中即通过。可复用/对齐 SK 侧 sk-4-3 禁用 import 守卫的做法。
+    守卫本身零框架 import；类型-only import 用 import type + .js 扩展名。

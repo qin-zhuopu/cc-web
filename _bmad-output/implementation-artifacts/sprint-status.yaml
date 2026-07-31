@@ -60,10 +60,10 @@ development_status:
   sk-2-3-platform-port: done
   epic-sk-2-retrospective: optional
 
-  epic-sk-3: backlog
-  sk-3-1-redactor-port-and-builtin-rules: backlog
-  sk-3-2-runtime-log-ring-buffer-port: backlog
-  sk-3-3-runtime-log-auto-redact-on-write: backlog
+  epic-sk-3: done
+  sk-3-1-redactor-port-and-builtin-rules: done
+  sk-3-2-runtime-log-ring-buffer-port: done
+  sk-3-3-runtime-log-auto-redact-on-write: done
   epic-sk-3-retrospective: optional
 
   epic-sk-4: backlog
