@@ -4,7 +4,7 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import type { Message, MessageId, MessageRole } from './message.js';
 import type { TokenUsage } from './token-usage.js';
-import type { MessageContent } from './message-content.js';
+import { textContent } from './message-content.js';
 import type { StreamStatus } from './stream-status.js';
 
 describe('MessageRole', () => {
@@ -22,7 +22,7 @@ describe('Message 合法字面量', () => {
       id: 'msg-1',
       sessionId: 'sess-1',
       role: 'assistant',
-      content: undefined as MessageContent, // 占位类型 unknown，c1-2 落地编解码
+      content: textContent('hi'), // MessageContent 已在 c1-2 落成富类型
       createdAt: 1_700_000_000_000,
       streamStatus: 'streaming',
       isHeartbeatAck: false,
@@ -41,7 +41,7 @@ describe('Message 合法字面量', () => {
       id: 'msg-2',
       sessionId: 'sess-1',
       role: 'user',
-      content: undefined as MessageContent,
+      content: textContent('hi'),
       createdAt: 1_700_000_000_001,
       streamStatus: 'completed',
       isHeartbeatAck: false,
@@ -59,7 +59,7 @@ describe('Message 合法字面量', () => {
       id: 'msg-3',
       sessionId: 'sess-1',
       role: 'assistant',
-      content: undefined as MessageContent,
+      content: textContent('hi'),
       createdAt: 1_700_000_000_002,
       streamStatus: 'completed',
       tokenUsage: {

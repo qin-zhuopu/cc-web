@@ -21,6 +21,18 @@ export { canOverrideTitle } from './conversation/domain/session/title-origin.js'
 // 消息领域值对象/实体（message）
 export type { MessageId, MessageRole, Message } from './conversation/domain/message/message.js';
 export type { MessageContent } from './conversation/domain/message/message-content.js';
+export { encodeContent, decodeContent, textContent } from './conversation/domain/message/message-content.js';
+// 消息内容块（判别联合与其辅助形状）
+export type {
+  ContentBlock,
+  TextBlock,
+  ThinkingBlock,
+  ToolUseBlock,
+  ToolResultBlock,
+  CodeBlock,
+  MediaRef,
+  ExternalSourceRef,
+} from './conversation/domain/message/content-block.js';
 export type { StreamStatus } from './conversation/domain/message/stream-status.js';
 export { canTransition } from './conversation/domain/message/stream-status.js';
 export type { TokenUsage } from './conversation/domain/message/token-usage.js';

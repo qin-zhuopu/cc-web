@@ -1,0 +1,70 @@
+# Epic C1-2 · MessageContent 值对象（5 类内容块 + 编解码往返 + 脏输入降级）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 排序：类型联合（ContentBlock 5 类）→ 编解码往返（encode/decode）→ 脏输入降级（decode 永不抛）
+#      → 工具块保真（tool_use/tool_result）→ 转纯文本（toPlainText）。
+- id: "c1-2-1"
+  title: 定义 ContentBlock 5 类内容块联合
+  description: >-
+    在 domain/message/content-block.ts 定义 ContentBlock 判别联合（text/thinking/tool_use/
+    tool_result/code 5 类）+ MediaRef/ExternalSourceRef 辅助类型，签名对齐 architecture §3.4。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    5 类块以 type 作判别标签、字段与 architecture §3.4（第 148-154 行）逐字一致：text{text}/
+    thinking{thinking}/tool_use{id,name,input:unknown}/tool_result{toolUseId,content,isError?,
+    media?,sources?}/code{language,code}，全字段 readonly。MediaRef/ExternalSourceRef 一并定义
+    （以够 tool_result 往返保真为准的最小形状）。本故事只定义类型联合，不含 encode/decode/toPlainText
+    实现（属后续故事）。核心零框架 import、无 I/O；类型-only import 用 import type + .js 扩展名。
+- id: "c1-2-2"
+  title: 实现 encodeContent/decodeContent 往返
+  description: >-
+    在 domain/message/message-content.ts 把占位 MessageContent 落成富类型接口（blocks +
+    toPlainText 签名）并实现 encodeContent/decodeContent/textContent，合法块 encode∘decode
+    往返不丢字段、幂等。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——往返保真+幂等：encodeContent(content)→落库 JSON string、decodeContent(raw)→值对象，
+    5 类合法内容块经 encode∘decode 不丢字段且幂等（NFR-3/AC-5），需表驱动单测覆盖全 5 类块。签名对齐
+    architecture §3.4 第 156-166 行（MessageContent{blocks:ReadonlyArray<ContentBlock>;
+    toPlainText():string}、encodeContent/decodeContent/textContent）。把占位 export type
+    MessageContent = unknown 落成富类型，不改 Message 实体其它字段。decodeContent 的脏输入降级与
+    toPlainText 拼接规则分别属 c1-2-3/c1-2-5，本故事先给合法路径的往返。核心纯函数无 I/O；
+    引用 ContentBlock 用 import type + .js 扩展名。
+- id: "c1-2-3"
+  title: decodeContent 脏输入降级为单 text 块
+  description: >-
+    实现 decodeContent 对任意脏输入永不抛：非 JSON / 非数组 / 解析异常一律降级为单个
+    {type:'text', text: raw}，降级路径可断言不静默吞异常。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——decodeContent 永不抛、脏输入降级为单 text 块：遵循 architecture §3.4 第 169 行语义——
+    尝试 JSON.parse → 若为数组则逐块归一化（数组中未知块类型的处理规则=丢弃 or 包 text，在实现中固定并单测，
+    不留待决）→ 任何异常/非数组 → { blocks: [{type:'text', text: raw}] }。喂入非 JSON 字符串断言
+    不抛、结果内容等于原串（FR-3.3/NFR-3/AC-5、反假数据契约 §0：明确降级非静默丢弃）。核心纯函数无 I/O；
+    类型-only import 用 import type + .js 扩展名。
+- id: "c1-2-4"
+  title: tool_use / tool_result 输入保真
+  description: >-
+    确保 tool_use.input（任意 JSON）与 tool_result 的 isError/media/sources 可选字段在
+    encode∘decode 往返中原样保留、一个字段不丢。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——工具块输入保真不丢字段：tool_use.input:unknown 任意 JSON（对象/数组/标量/嵌套）原样保留；
+    tool_result 的 isError:boolean、media:ReadonlyArray<MediaRef>、sources:ReadonlyArray<
+    ExternalSourceRef> 可选字段往返一致（FR-3.4/AC-6）。表驱动单测断言带全部可选字段的 tool_result 与带
+    任意 JSON input 的 tool_use 往返不丢字段。本故事在 c1-2-2 往返基础上补齐工具块可选字段/任意 input 的
+    保真断言，不新增块类型。核心纯函数无 I/O；类型-only import 用 import type + .js 扩展名。
+- id: "c1-2-5"
+  title: MessageContent.toPlainText 转纯文本
+  description: >-
+    实现 MessageContent.toPlainText() 把内容块拼接为稳定纯文本（拼 text/code 块），供列表预览与
+    喂 C2.TitleGenerator 的 recentMessages prompt 投影。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——转纯文本供 prompt 投影：toPlainText() 拼接 text 与 code 块产出稳定可断言纯文本，
+    拼接顺序/块间分隔/非文本块（thinking/tool_use/tool_result）的处理规则在实现中固定并单测（对齐
+    architecture §3.4 第 159 行注释、FR-4.4 支撑）。混合块输入产出稳定纯文本，供列表预览与标题上下文
+    （喂 C2.TitleGenerator 的 recentMessages 纯文本）。本故事只做纯文本投影，不碰会话/消息用例
+    （属 c1-3/c1-4/c1-5）。核心纯函数无 I/O；类型-only import 用 import type + .js 扩展名。

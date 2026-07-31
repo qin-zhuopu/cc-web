@@ -84,12 +84,12 @@ development_status:
   c1-1-7-forbidden-import-static-guard: done
   epic-c1-1-retrospective: optional
 
-  epic-c1-2: backlog
-  c1-2-1-define-content-block-union: backlog
-  c1-2-2-implement-encode-decode-content-roundtrip: backlog
-  c1-2-3-decode-content-dirty-input-downgrade: backlog
-  c1-2-4-tool-result-and-tool-use-input-fidelity: backlog
-  c1-2-5-message-content-to-plain-text: backlog
+  epic-c1-2: done
+  c1-2-1-define-content-block-union: done
+  c1-2-2-implement-encode-decode-content-roundtrip: done
+  c1-2-3-decode-content-dirty-input-downgrade: done
+  c1-2-4-tool-result-and-tool-use-input-fidelity: done
+  c1-2-5-message-content-to-plain-text: done
   epic-c1-2-retrospective: optional
 
   epic-c1-3: backlog

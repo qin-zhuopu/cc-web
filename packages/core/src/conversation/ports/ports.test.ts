@@ -19,10 +19,11 @@ import type {
 } from './driven/title-generator-port.js';
 import { SessionMode, SessionSource, SessionStatus } from '../domain/session/chat-session.js';
 import type { MessageContent } from '../domain/message/message-content.js';
+import { textContent } from '../domain/message/message-content.js';
 
-// MessageContent 在本波次为占位类型（unknown，编解码属 c1-2）。
-// 端口类型层测试仅需一个占位内容值，用最小对象充当。
-const stubContent: MessageContent = { blocks: [] };
+// MessageContent 已在 c1-2 落成富类型（blocks + toPlainText 投影）。
+// 端口类型层测试仅需一个合法内容值，用 textContent 便捷构造一个空文本块内容充当。
+const stubContent: MessageContent = textContent('');
 
 describe('C1 驱动端口输入类型（对齐 architecture §4）', () => {
   it('CreateSessionInput 可全缺省，也可含合法字段', () => {
