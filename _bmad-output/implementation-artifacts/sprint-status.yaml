@@ -122,15 +122,15 @@ development_status:
   epic-c1-6-retrospective: optional
 
   # ===================== C2 · AgentRuntime =====================
-  epic-c2-1: backlog
-  c2-1-1-define-stream-phase-and-terminal-substate: backlog
-  c2-1-2-define-can-transition-phase-and-reconcile: backlog
-  c2-1-3-define-terminal-reason-and-error-mapping: backlog
-  c2-1-4-define-turn-artifacts-and-build-final-content: backlog
-  c2-1-5-define-agent-stream-event-union: backlog
-  c2-1-6-define-runtime-kind-and-ports: backlog
-  c2-1-7-forbidden-import-static-guard: backlog
-  c2-1-8-define-c2-message-keys: backlog
+  epic-c2-1: done
+  c2-1-1-define-stream-phase-and-terminal-substate: done
+  c2-1-2-define-can-transition-phase-and-reconcile: done
+  c2-1-3-define-terminal-reason-and-error-mapping: done
+  c2-1-4-define-turn-artifacts-and-build-final-content: done
+  c2-1-5-define-agent-stream-event-union: done
+  c2-1-6-define-runtime-kind-and-ports: done
+  c2-1-7-forbidden-import-static-guard: done
+  c2-1-8-define-c2-message-keys: done
   epic-c2-1-retrospective: optional
 
   epic-c2-2: backlog

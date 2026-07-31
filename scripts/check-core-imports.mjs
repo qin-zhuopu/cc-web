@@ -4,7 +4,8 @@
 // 纳入根 `npm run test` 门禁（typecheck → 本脚本 → vitest）。
 //
 // 禁用清单（见 spec Design Notes / architecture.md 核心包铁律）：
-//   - import 模块：@nestjs/*、better-sqlite3、@anthropic-ai/*、uuid、crypto/node:crypto
+//   - import 模块：@nestjs/*、better-sqlite3、@anthropic-ai/*、uuid、crypto/node:crypto、
+//     child_process/node:child_process
 //   - 直调运行时 API：Date.now(、randomUUID
 //   - C1 专属【禁 phase 守卫】：conversation/ 子树严禁出现 C2 运行时相位概念
 //     （StreamSession、.phase 成员访问、'settling'/'terminal' 相位字面量）。
@@ -25,6 +26,12 @@ export const FORBIDDEN_MODULE_RULES = [
   // crypto / node:crypto：核心包禁止直接 import Node 内建随机/哈希源，
   // 随机 id 一律经 SK.IdGenerator 注入（同 randomUUID 直调禁令的 import 侧兜底）。
   { name: 'crypto', test: (spec) => spec === 'crypto' || spec === 'node:crypto' },
+  // child_process / node:child_process：C2 会涉及子进程 Runtime（如 CLI/子进程执行器），
+  // 但核心包严禁直接 import 子进程模块——进程编排是适配层（apps/api）职责，核心只持类型/端口。
+  {
+    name: 'child_process',
+    test: (spec) => spec === 'child_process' || spec === 'node:child_process',
+  },
 ];
 
 /**
@@ -209,7 +216,7 @@ function main() {
     for (const v of violations) {
       console.error(`  ✗ ${v.file}:${v.line}  ${v.rule}  →  ${v.detail}`);
     }
-    console.error('\npackages/core 必须零框架依赖：禁止 import @nestjs/* / better-sqlite3 / @anthropic-ai/* / uuid / crypto，禁止直调 Date.now() / randomUUID；conversation/ 子树严禁出现 C2 运行时相位标识（StreamSession / .phase / \'settling\' / \'terminal\'）。\n');
+    console.error('\npackages/core 必须零框架依赖：禁止 import @nestjs/* / better-sqlite3 / @anthropic-ai/* / uuid / crypto / child_process，禁止直调 Date.now() / randomUUID；conversation/ 子树严禁出现 C2 运行时相位标识（StreamSession / .phase / \'settling\' / \'terminal\'）。\n');
     process.exit(1);
   }
 

@@ -95,6 +95,34 @@ describe('scanContent — 禁用 crypto import 规则', () => {
   });
 });
 
+describe('scanContent — 禁用 child_process import 规则', () => {
+  it(`import 'child_process' 命中 child_process 规则`, () => {
+    expect(hasRule(scanContent(`import { spawn } from 'child_process';`), '禁用 import: child_process')).toBe(true);
+  });
+
+  it(`import 'node:child_process' 命中 child_process 规则`, () => {
+    expect(
+      hasRule(scanContent(`import { execFile } from 'node:child_process';`), '禁用 import: child_process'),
+    ).toBe(true);
+  });
+
+  it(`require('child_process') / 动态 import 命中 child_process 规则`, () => {
+    expect(hasRule(scanContent(`const cp = require('child_process');`), '禁用 import: child_process')).toBe(true);
+    expect(hasRule(scanContent(`const cp = import('node:child_process');`), '禁用 import: child_process')).toBe(true);
+  });
+
+  it(`'child_process_x' 等他包不误报为 child_process 规则`, () => {
+    expect(hasRule(scanContent(`import x from 'child_process_x';`), '禁用 import: child_process')).toBe(false);
+    // 边界锁定：他包不应产生任何 violation。
+    expect(scanContent(`import x from 'child_process_x';`)).toHaveLength(0);
+  });
+
+  it(`干净的 agent-runtime 相对路径 import 0 命中`, () => {
+    // agent-runtime/ 子树落在 packages/core/src 内，被同一守卫扫描；纯相对 import 不应命中。
+    expect(scanContent(`import type { RuntimeEvent } from './event/runtime-event.js';`)).toHaveLength(0);
+  });
+});
+
 describe('scanContent — C1 禁 phase 守卫（仅 conversation 子树）', () => {
   const asConv = { isConversation: true };
 

@@ -188,7 +188,7 @@ export enum TerminalReasonCode {
 
 export interface TerminalReason {
   readonly code: TerminalReasonCode;
-  readonly classified: ClassifiedError;  // 经 SK.ErrorClassifier 归一（含 ABORTED 独立类）
+  readonly classified?: ClassifiedError;  // 经 SK.ErrorClassifier 归一（含 ABORTED 独立类）；COMPLETED 正常完成无错误时省略，绝不造假 ClassifiedError（AC-9 反假数据）
 }
 ```
 
