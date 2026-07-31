@@ -1,0 +1,15 @@
+# 统一行尾策略：仓库内一律 LF，工作区也 LF（不随 core.autocrlf 摆动）。
+# 根治 Windows 下 core.autocrlf=true 导致 git status 把纯 CRLF 差异误报为改动、
+# 使 run-dev-auto.sh 的工作区脏检查永远失败的问题。
+* text=auto eol=lf
+
+# 明确的二进制类型，禁止行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary
