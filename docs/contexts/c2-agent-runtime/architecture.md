@@ -421,6 +421,9 @@ export type { ProviderRepository };   // C2 只读消费：解析 providerId →
 - 封装 `@anthropic-ai/claude-agent-sdk` 的 `Query` 句柄（对齐 `claude-client.ts` + `conversation-registry.ts`）。
 - **句柄注册 + lockId 归属**：`run` 时以 `lockId` 注册 `Query`；`interrupt` 组合 `abortConversation(reason)` + `Query.interrupt()`（对齐现有 `abortConversation`：先 abort application-owned signal 再发优雅 interrupt）。**late-unregister（旧 lockId）为 no-op**，超越turn的 teardown 不能 evict 新 turn 的句柄（AC-6）。
 - `ClaudeSdkEventMapper`：SDK message → `AgentStreamEvent`（text/thinking/tool_use/tool_result/permission_request/result 等）。
+- **运行时模型配置（query() 的 `options.env`）**：本机集成/E2E 统一走 litellm 网关，模型路由到 `Jereh-Kimi-K2.6`。适配器调用 `query()` 时，把下列 env 注入 `options.env`（值的单一真相源是 `apps/api/.env`，模板见入库的 `apps/api/.env.example`）：`ANTHROPIC_BASE_URL=https://litellm.jereh.cn`、`ANTHROPIC_MODEL`/`CLAUDE_CODE_SUBAGENT_MODEL`/`ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL=Jereh-Kimi-K2.6`、`ANTHROPIC_AUTH_TOKEN`（密钥，只在 `.env`）、`CLAUDE_CODE_WORKFLOWS=1`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`。
+  - **边界**：这些 env 由 apps/api 适配层在运行时读取并注入；核心包 `packages/core` 零框架、禁 `@anthropic-ai/*`、禁读 `process.env`（`scripts/check-core-imports.mjs` 守卫）。
+  - **注意**：`.env` 已被 `.gitignore` 排除，`ANTHROPIC_AUTH_TOKEN` 绝不入库/回显。此 env 供 SDK query 与 E2E **运行时**读取，**不注入 workflow 子代理**（子代理继承会话模型）。
 
 ### 7.2 NativeRuntimeAdapter
 - 封装 Native HTTP provider 的 SSE 流（`fetch` + `AbortController`）。

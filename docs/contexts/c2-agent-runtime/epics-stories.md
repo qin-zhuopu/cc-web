@@ -72,6 +72,7 @@ updated: 2026-07-30
 ## E6 · 三 Runtime 适配器 + EventMapper
 
 - **S6.1** `ClaudeSdkRuntimeAdapter` + `ClaudeSdkEventMapper`：封装 `Query` 句柄 + `lockId` 归属 + `abortConversation`+`Query.interrupt` 组合中断。**AC-6/7**：SDK 事件归一等价、late-unregister no-op。（FR-5.2）
+  - **运行时模型配置**：`query()` 的 `options.env` 从 `apps/api/.env`（模板 `apps/api/.env.example`）读取——litellm 网关 `ANTHROPIC_BASE_URL=https://litellm.jereh.cn`、模型 `Jereh-Kimi-K2.6`、密钥 `ANTHROPIC_AUTH_TOKEN`（只在 `.env`，不入库）。详见 architecture.md §7.1。集成/E2E 测试运行时同源读取，不注入 workflow 子代理。
 - **S6.2** `NativeRuntimeAdapter` + `NativeSseEventMapper`：HTTP SSE 流 + `AbortController` 中断。**AC-7**：SSE 帧归一等价。（FR-5.3）
 - **S6.3** `CodexRuntimeAdapter` 进程管理隔离：binary 发现（多候选选最新）/ Windows `.cmd` shim 经 cmd.exe / spawn / dispose orphan 规避。**AC-10**：核心包 `child_process`/`codex` 0 命中。（FR-5.4）
 - **S6.4** Codex fatal config stderr 快失败：签名命中→`fireClose`+`SIGKILL`，不等 30s linger；`onClose` 拒 pending RPC。**AC-10**：fail-fast 单测（不等 30s）。（FR-5.4 / NFR-4）
