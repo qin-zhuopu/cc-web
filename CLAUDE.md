@@ -12,6 +12,7 @@
 
 - **Git-Bash 环境下 `git` 输出异常**：本机 Git-Bash 里 `git status --short` 会返回伪造/固定文案，`find -newermt` 无输出。凡需可靠读取 git 状态或枚举文件时，统一用全路径 `/mingw64/bin/git` 直调，或改用 Glob 工具枚举文件，不要依赖裸 `git status` / `find` 的输出。
 - **本项目有独立 git 仓库**：`codepilot-web/` 自身即仓库根（上层 dotfiles 仓库的 `.gitignore` 用 `/repo/` 忽略了整个子树，勿把项目提交进 dotfiles 仓库）。
+- **LLM 运行时模型配置**：本机集成/E2E 及 C2 SDK 适配器统一走 litellm 网关（`ANTHROPIC_BASE_URL=https://litellm.jereh.cn`）、模型 `Jereh-Kimi-K2.6`。值的**单一真相源是 `apps/api/.env`**（含密钥 `ANTHROPIC_AUTH_TOKEN`，已 gitignored、绝不入库/回显）；入库模板见 `apps/api/.env.example`；承接者说明见 `docs/contexts/c2-agent-runtime/architecture.md §7.1` 与 `epics-stories.md S6.1`。这些 env 由 apps/api 适配层运行时读取并注入 `query()` 的 `options.env`，**不注入 workflow 子代理**（子代理继承会话模型）；核心包 `packages/core` 禁读 `process.env`、禁 `@anthropic-ai/*`。
 
 ## TypeScript 约定
 
