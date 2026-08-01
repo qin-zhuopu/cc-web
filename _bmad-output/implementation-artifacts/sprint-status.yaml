@@ -190,11 +190,11 @@ development_status:
 
   # ===================== EPIC-ACCEPT · 验收链路（新增，替代前端） =====================
   # SSE 为中心的三件套接口 + 一式三份 + 断线补发 + CLI 监听客户端 + C7 stub。
-  epic-accept: backlog
-  accept-1-provider-repository-claude-stub: backlog
-  accept-2-sse-broadcast-hub-per-session: backlog
-  accept-3-event-log-file-adapter-append-with-seq: backlog
-  accept-4-post-stream-create-session-with-options: backlog
+  epic-accept: in-progress
+  accept-1-provider-repository-claude-stub: done
+  accept-2-sse-broadcast-hub-per-session: done
+  accept-3-event-log-file-adapter-append-with-seq: done
+  accept-4-post-stream-create-session-with-options: done
   accept-5-get-stream-attach-existing-session: backlog
   accept-6-post-messages-trigger-turn-broadcast: backlog
   accept-7-resume-replay-via-last-event-id: backlog

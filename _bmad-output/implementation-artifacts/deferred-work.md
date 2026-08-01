@@ -49,3 +49,8 @@
 - source_spec: `epic-c2-7/SPEC.md`
   summary: conversation.module.ts 的 `AgentRuntimeModule` import 在补 forwardRef 前为「只导入未使用」；若将来开启 `noUnusedLocals` 会报错。本次修复已把它用进 imports 数组，此项已随阻断2修复消解，仅记录以备 tsconfig 严格化时复查。
   evidence: C2-E7 对抗评审 nitpick #2（非阻断，且已随阻断2修复解决）。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【需人工介入 · 会话模型失效阻塞】EPIC-ACCEPT 的 accept-5/6/7/8 及 merge/review/e2e-smoke 波次全部失败，报 `400 [kiro/claude-opus-4.8] Invalid model ID: Please select a different model`。根因是 workflow 子代理继承的会话模型 `kiro/claude-opus-4.8` 在运行中途失效（harness/CLI 层模型配置，非 .env 里的 litellm 模型，非代码问题）。resume 会用同一失效模型，重跑仍 400。已落地并门禁通过（678 测试全绿、守卫 0 命中）的是 accept-1~4：stub-provider-repository / session-sse-hub / file-event-log / session-stream.controller（POST /api/sessions/stream 新建）。
+  待续：切换到可用会话模型后，用 Workflow({scriptPath: ".../wf-accept.mjs", resumeFromRunId: "wf_76ad1377-0ad"}) 续跑——accept-1~4 从缓存秒回，只重跑 accept-5（GET stream 挂载）/accept-6（POST messages 广播）/accept-7（Last-Event-ID 补发）/accept-8（CLI listen，cli 目录尚不存在）/merge+verify/review/accept-9（端到端 smoke，需真实 litellm）。
+  evidence: accept workflow wf_76ad1377-0ad 完成通知，11 波次中 4 done 7 error，全部 error 为同一 INVALID_MODEL_ID。当前工作区已固化为门禁全绿的干净断点。

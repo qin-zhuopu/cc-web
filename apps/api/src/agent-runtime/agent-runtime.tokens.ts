@@ -38,3 +38,15 @@ export const ABORT_STREAM_USECASE = Symbol('C2.AbortStreamUseCase');
  * 供 C1 经 forwardRef 注入（C1 的 SetSessionTitleService 消费此实现，解 C1↔C2 环的另一侧）。
  */
 export const TITLE_GENERATOR = Symbol('C2.TitleGenerator');
+
+// —— 验收链路适配器（epic-accept，均为 apps/api 最外层驱动/出站适配器，非核心）——
+/**
+ * SessionSseHub token —— 绑按会话的内存 SSE 广播中枢（accept-2 / SPEC CAP-2）。
+ * 一次回合的归一事件经此 fan-out 给所有挂在该会话 stream 上的连接；纯内存，进程重启即空。
+ */
+export const SESSION_SSE_HUB = Symbol('C2.SessionSseHub');
+/**
+ * FileEventLog token —— 绑每会话 append-only 文件事件日志（accept-3 / SPEC CAP-3）。
+ * 一式三份的第二份：一行一事件含单调递增 seq（SSE id 来源），也是断线补发数据源。
+ */
+export const FILE_EVENT_LOG = Symbol('C2.FileEventLog');

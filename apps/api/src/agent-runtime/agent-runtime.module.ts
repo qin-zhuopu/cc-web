@@ -32,6 +32,9 @@ import type {
   GetSessionHistoryUseCase,
   AppendMessageUseCase,
 } from '@codepilot/core';
+import { SessionSseHub } from './adapters/session-sse-hub.js';
+import { FileEventLog } from './adapters/file-event-log.js';
+import { SessionStreamController } from './controllers/session-stream.controller.js';
 import { SharedKernelModule } from '../shared-kernel/shared-kernel.module.js';
 import { CLOCK, ID_GENERATOR, ERROR_CLASSIFIER } from '../shared-kernel/sk-tokens.js';
 import { ConversationModule } from '../conversation/conversation.module.js';
@@ -46,7 +49,7 @@ import {
 } from './adapters/claude-sdk-runtime-adapter.js';
 import { RuntimeRouter, type RuntimeAdapterMap } from './runtime-router.js';
 import { SetTimeoutForceAbortScheduler } from './adapters/set-timeout-force-abort-scheduler.js';
-import { StubProviderReadPort } from './adapters/stub-provider-read.js';
+import { StubProviderRepository } from './adapters/stub-provider-repository.js';
 import { PermissionController } from './controllers/permission.controller.js';
 import { ChatController } from './controllers/chat.controller.js';
 import { RuntimeController } from './controllers/runtime.controller.js';
@@ -58,7 +61,10 @@ import {
   START_STREAM_USECASE,
   ABORT_STREAM_USECASE,
   TITLE_GENERATOR,
+  SESSION_SSE_HUB,
+  FILE_EVENT_LOG,
 } from './agent-runtime.tokens.js';
+import { MANAGE_SESSION_USECASE } from '../conversation/conversation.tokens.js';
 
 /**
  * loadRuntimeEnv —— 从 process.env 归约出注入 SDK query() options.env 的运行时配置（对齐 .env 约定）。
@@ -100,14 +106,21 @@ function loadRuntimeEnv(): RuntimeEnvConfig {
     // —— force-abort 安全网延时调度（c2-7-3，setTimeout 生产实现）——
     { provide: FORCE_ABORT_SCHEDULER, useClass: SetTimeoutForceAbortScheduler },
 
-    // —— C7 ProviderReadPort 最小 stub（写死单个 anthropic provider；C7 落地后替换）——
-    // hasCredentials 反映真实凭据存在性（.env 的 ANTHROPIC_AUTH_TOKEN 是否就位，反假数据）。
+    // —— 验收链路适配器（epic-accept）：按会话 SSE 广播中枢（accept-2）+ 文件事件日志（accept-3）——
+    // 均为 apps/api 最外层内存/本机组件，非核心、非持久层；供 SessionStreamController 一式三份落点消费。
+    // 中枢单例保证同会话多连接 fan-out 共享；文件日志单例保证同进程内 seq 单调计数缓存共享。
+    { provide: SESSION_SSE_HUB, useFactory: () => new SessionSseHub() },
+    { provide: FILE_EVENT_LOG, useFactory: () => new FileEventLog() },
+
+    // —— C7 ProviderReadPort 最小 stub（accept-1 / SPEC CAP-1，写死单个 Claude provider；C7 落地后替换）——
+    // hasCredentials 反映真实凭据存在性（.env 的 ANTHROPIC_AUTH_TOKEN 是否就位，反假数据）；
+    // token 值只用于归约布尔存在性，绝不透传/回显（密钥纪律）。model 从 .env 的 ANTHROPIC_MODEL 透传。
     {
       provide: PROVIDER_READ_PORT,
       useFactory: () => {
         const token = process.env.ANTHROPIC_AUTH_TOKEN;
         const hasCredentials = token !== undefined && token.length > 0 && token !== 'sk-REPLACE_ME';
-        return new StubProviderReadPort(hasCredentials, process.env.ANTHROPIC_MODEL);
+        return new StubProviderRepository(hasCredentials, process.env.ANTHROPIC_MODEL);
       },
     },
 
@@ -192,7 +205,7 @@ function loadRuntimeEnv(): RuntimeEnvConfig {
   ],
   // 三个驱动适配器控制器（c2-7-5 补齐 ChatController/RuntimeController；PermissionController 属 c2-7-2 已就位）。
   // 均为本机无鉴权端点（sprint-plan「无 UI 本机后端」定位），生产化前需补访问控制（详见各控制器文件顶注）。
-  controllers: [ChatController, PermissionController, RuntimeController],
+  controllers: [ChatController, PermissionController, RuntimeController, SessionStreamController],
   // 导出：START_STREAM/ABORT_STREAM/AGENT_RUNTIME_PORT 供 C3；TITLE_GENERATOR 供 C1（forwardRef 另一侧）。
   exports: [
     START_STREAM_USECASE,
