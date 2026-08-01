@@ -44,11 +44,12 @@ function makeRequest(streamId: string, kind: RuntimeKind): RuntimeRunRequest {
   };
 }
 
-/** 假适配器：run 产出一个 text 事件，interrupt/forceKillTurn/availability 为 spy。 */
+/** 假适配器：run 产出一个 text 事件，interrupt/forceKillTurn/availability/resolvePermission 为 spy。 */
 function makeFakeAdapter() {
   const runSpy = vi.fn();
   const interruptSpy = vi.fn(async () => 'interrupted');
   const forceKillSpy = vi.fn();
+  const resolvePermissionSpy = vi.fn(async () => {});
   const adapter: AgentRuntimePort = {
     run(request: RuntimeRunRequest): AsyncIterable<AgentStreamEvent> {
       runSpy(request);
@@ -59,11 +60,12 @@ function makeFakeAdapter() {
     },
     interrupt: interruptSpy as unknown as AgentRuntimePort['interrupt'],
     forceKillTurn: forceKillSpy as unknown as AgentRuntimePort['forceKillTurn'],
+    resolvePermission: resolvePermissionSpy as unknown as AgentRuntimePort['resolvePermission'],
     async availability() {
       return { kind: 'ready' as const };
     },
   };
-  return { adapter, runSpy, interruptSpy, forceKillSpy };
+  return { adapter, runSpy, interruptSpy, forceKillSpy, resolvePermissionSpy };
 }
 
 async function collect(stream: AsyncIterable<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
@@ -101,6 +103,32 @@ describe('RuntimeRouter —— CLAUDE_SDK 委派', () => {
     const ref: TurnRef = { streamId: 's-3' };
     router.forceKillTurn(ref);
     expect(forceKillSpy).toHaveBeenCalledWith(ref);
+  });
+
+  it('resolvePermission 按 streamId 委派对应适配器，决议忠实透传（C2 不裁决）', async () => {
+    const { adapter, resolvePermissionSpy } = makeFakeAdapter();
+    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
+    const iter = router.run(makeRequest('s-6', RuntimeKind.CLAUDE_SDK))[Symbol.asyncIterator]();
+    await iter.next();
+    const ref: TurnRef = { streamId: 's-6' };
+    const decision = {
+      permissionRequestId: 'p-1',
+      status: 'allow' as const,
+      updatedInput: { path: '/tmp/x' },
+    };
+    await router.resolvePermission(ref, decision);
+    // 忠实透传：streamId + 决议原样委派，router 不篡改、不裁决。
+    expect(resolvePermissionSpy).toHaveBeenCalledWith(ref, decision);
+  });
+
+  it('resolvePermission 未知 streamId → no-op（不抛，无对应在途回合）', async () => {
+    const { adapter, resolvePermissionSpy } = makeFakeAdapter();
+    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
+    await router.resolvePermission(
+      { streamId: 'never' },
+      { permissionRequestId: 'p-x', status: 'deny' },
+    );
+    expect(resolvePermissionSpy).not.toHaveBeenCalled();
   });
 });
 

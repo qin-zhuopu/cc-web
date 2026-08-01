@@ -169,6 +169,7 @@ describe('C2 端口契约可被结构化对象满足（编译期通过即达标�
       interrupt: async (_ref) => 'idle',
       forceKillTurn: (_ref) => {},
       availability: async () => ({ kind: 'ready' }),
+      resolvePermission: (_ref, _decision) => {},
     };
     expect(request.runtimeKind).toBe('claude-sdk');
     expect(turnRef.streamId).toBe('run-1');

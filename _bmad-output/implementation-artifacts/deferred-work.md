@@ -41,3 +41,11 @@
 - source_spec: `epic-c2-5/SPEC.md`
   summary: AbortStreamService 注入的 SK.Clock 当前为死依赖（abort-stream.ts 内 void this.clock，settledAt 由 StreamSession 自带 Clock 记）；settleTimeout 是服务公有方法但未在 AbortStreamUseCase 端口声明（c2-7 接线若需从端口触发超时归因要补端口方法，定时触发机制属 c2-6）。
   evidence: C2-E5 对抗评审 nitpick #2/#3（非阻断）。Clock 构造注入以备后续故事、符合「一次性注入」意图但当前无用途；settleTimeout 不在端口属架构 loose end，本 epic 定时触发不在范围内，可接受。
+
+- source_spec: `epic-c2-7/SPEC.md`
+  summary: agent-runtime.module.spec.ts 在默认 vitest worker pool 下，NestFactory 初始化错误被 `process.abort() is not supported in workers` 掩盖，使 import 期崩溃伪装成无信息量的普通 fail。建议 spec 加 `abortOnError: false` 或改 fork pool，让 DI 装配错误真实浮现——否则未来任何接线错都以同一句 worker 报错出现，验证形同虚设。
+  evidence: C2-E7 对抗评审 nitpick #1（非阻断）。本次 2 个阻断（index.ts 漏导出、conversation.module 缺 forwardRef）修复后门禁已全绿（650 测试通过、守卫 0 命中），此项为测试可观测性改进，不影响功能正确性。
+
+- source_spec: `epic-c2-7/SPEC.md`
+  summary: conversation.module.ts 的 `AgentRuntimeModule` import 在补 forwardRef 前为「只导入未使用」；若将来开启 `noUnusedLocals` 会报错。本次修复已把它用进 imports 数组，此项已随阻断2修复消解，仅记录以备 tsconfig 严格化时复查。
+  evidence: C2-E7 对抗评审 nitpick #2（非阻断，且已随阻断2修复解决）。

@@ -78,6 +78,7 @@ class FakeAgentRuntimePort implements AgentRuntimePort {
   async availability(): Promise<RuntimeAvailability> {
     return { kind: 'unknown' };
   }
+  resolvePermission(): void {}
 }
 
 /** 假 ProviderReadPort：记录调用并回可控视图（本故事不解析，c2-4-2 起验证）。 */
@@ -572,6 +573,7 @@ class ScriptedAgentRuntimePort implements AgentRuntimePort {
   async availability(): Promise<RuntimeAvailability> {
     return { kind: 'unknown' };
   }
+  resolvePermission(): void {}
 }
 
 /**

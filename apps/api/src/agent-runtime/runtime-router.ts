@@ -17,6 +17,7 @@ import type {
   AgentStreamEvent,
   RuntimeAvailability,
   ErrorClassifier,
+  PermissionDecision,
 } from '@codepilot/core';
 import { RuntimeKind } from '@codepilot/core';
 
@@ -79,6 +80,18 @@ export class RuntimeRouter implements AgentRuntimePort {
     }
     adapter.forceKillTurn(turnRef);
     this.streamRuntimeKind.delete(turnRef.streamId);
+  }
+
+  /**
+   * 【c2-7 扩展 · CAP-2】权限决议中转：按 turnRef.streamId 定位其适配器委派 resolvePermission。
+   * 忠实转发上层决议（C2 不裁决、不做经纪判定）。无记录（未知/已清除）→ no-op（不抛，决议已无对应在途回合）。
+   */
+  async resolvePermission(turnRef: TurnRef, decision: PermissionDecision): Promise<void> {
+    const adapter = this.adapterForStream(turnRef.streamId);
+    if (adapter === undefined) {
+      return;
+    }
+    await adapter.resolvePermission(turnRef, decision);
   }
 
   /**

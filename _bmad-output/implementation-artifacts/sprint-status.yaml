@@ -49,9 +49,9 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   # ===================== SK · Shared Kernel =====================
   epic-sk-1: done
-  sk-1-1-define-16-error-codes-and-domain-types: review
-  sk-1-2-implement-error-classifier: review
-  sk-1-3-define-sk-i18n-message-keys: review
+  sk-1-1-define-16-error-codes-and-domain-types: done
+  sk-1-2-implement-error-classifier: done
+  sk-1-3-define-sk-i18n-message-keys: done
   epic-sk-1-retrospective: optional
 
   epic-sk-2: done
@@ -179,13 +179,13 @@ development_status:
   c2-6-7-fault-isolation-across-runtimes: deferred
   epic-c2-6-retrospective: optional
 
-  epic-c2-7: backlog
-  c2-7-1-generate-title-service-non-streaming: backlog
-  c2-7-2-permission-request-event-emit: backlog
-  c2-7-3-permission-decision-relay: backlog
-  c2-7-4-agent-runtime-module-di-forwardref: backlog
-  c2-7-5-driving-adapters-chat-permission-runtime-controllers: backlog
-  c2-7-6-terminal-to-c1-stream-status-mapping: backlog
+  epic-c2-7: done
+  c2-7-1-generate-title-service-non-streaming: done
+  c2-7-2-permission-request-event-emit: done
+  c2-7-3-permission-decision-relay: done
+  c2-7-4-agent-runtime-module-di-forwardref: done
+  c2-7-5-driving-adapters-chat-permission-runtime-controllers: done
+  c2-7-6-terminal-to-c1-stream-status-mapping: done
   epic-c2-7-retrospective: optional
 
   # ===================== EPIC-ACCEPT · 验收链路（新增，替代前端） =====================

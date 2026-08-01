@@ -112,6 +112,10 @@ class FakeAgentRuntimePort implements AgentRuntimePort {
   availability(): Promise<RuntimeAvailability> {
     return Promise.resolve({ kind: 'unknown' });
   }
+
+  resolvePermission(): void {
+    // AbortStreamService 不触达权限决议，占位满足接口（c2-7 端口扩展）。
+  }
 }
 
 /** 构造一个已注册的 active StreamSession + registry。 */

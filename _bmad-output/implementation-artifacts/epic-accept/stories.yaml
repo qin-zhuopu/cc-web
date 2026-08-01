@@ -1,0 +1,118 @@
+# Epic ACCEPT · 验收链路（替代前端：SSE 三件套 + 一式三份 + 断线补发 + CLI）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：provider stub → SSE 广播中枢 → 文件事件日志 → POST /stream 新建 → GET /:id/stream 挂载 → POST /:id/messages 触发+广播 → Last-Event-ID 补发 → CLI 监听 → 端到端 smoke。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 全部落 apps/api 最外层驱动/出站适配器（NestJS 控制器 / SSE / 文件日志 / 广播中枢 / CLI），
+# packages/core 零框架、零文件、零 SQL 完全不改；复用 C1 会话/消息用例、C2 StartStream/AbortStream 用例、c2-6 ClaudeSdkRuntimeAdapter、c2-7 接线。
+# 安全事实：这些是 HTTP 端点且本期无鉴权——本机使用、绑 loopback、不对外暴露（记录在案的取舍，见 SPEC「安全事实」）。
+- id: "accept-1-provider-repository-claude-stub"
+  title: C7.ProviderRepository 最小 Claude stub（apps/api 只读、返回写死单个 Claude 配置）
+  description: >-
+    本期 C7 不做，但 c2-7 接线的 StartStream/GenerateTitle 依赖注入 C7.ProviderRepository 只读端口。
+    在 apps/api 落最小只读 stub，返回写死的单个 Claude provider 配置（CLAUDE_SDK，endpoint/model 对齐 litellm 网关 Jereh-Kimi-K2.6），
+    实现 packages/core/src/agent-runtime/ports/driven/provider-read-port.ts 的本地只读接口契约。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/adapters/stub-provider-repository.ts：实现 provider-read-port.ts 转出的只读端口
+    （如 getById/resolve 返回单个写死 Claude ResolvedProviderView，RuntimeKind.CLAUDE_SDK、endpoint=litellm 网关、model=Jereh-Kimi-K2.6），
+    经 NestJS DI provide 给 AgentRuntimeModule 的 ProviderRepository token。只读、绝不写 Provider；auth 值来自运行时 env（apps/api/.env），
+    stub 里绝不硬编码密钥字面量。新建同目录 *.test.ts：断言返回 provider 形状/协议正确、无密钥字面量、只读方法可用。
+    import type + .js；术语中文（禁「上下文」指代 bounded context）。不改 packages/core。
+- id: "accept-2-sse-broadcast-hub-per-session"
+  title: 按会话的 SSE 广播中枢（内存 sessionId→订阅者集合，回合事件 fan-out）
+  description: >-
+    一个 POST /messages 触发的回合，其归一事件要广播给所有挂在该会话 stream 上的连接。
+    落一个按会话的内存广播中枢：维护 sessionId → Set<订阅者>，publish 时 fan-out 到每个活跃 SSE 连接；
+    连接关闭时摘除订阅者，无泄漏。纯内存出站/驱动适配器，绝不进核心包。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/adapters/session-sse-hub.ts：subscribe(sessionId, listener): unsubscribe、publish(sessionId, event)。
+    维护 Map<sessionId, Set<listener>>；publish 对该会话所有 listener best-effort fan-out（单个 listener 抛错不阻断其他）；unsubscribe 摘除、集合空时清 key。
+    新建同目录 *.test.ts：同 sessionId 多订阅者都收同一事件；unsubscribe 后不再收；不同 sessionId 互不串台；某订阅者抛错不影响其他派发。
+    纯内存、无框架依赖（可作 NestJS provider）。import type + .js；术语中文。不改 packages/core。
+- id: "accept-3-event-log-file-adapter-append-with-seq"
+  title: 文件事件日志适配器（每会话 append-only + 单调递增 seq）
+  description: >-
+    一式三份的第二份：每会话一个 append-only 文件日志，一行一事件（JSON），每行含单调递增 seq（会话内从 1 起严格 +1，即 SSE id 来源）。
+    这是流水账，也是断线补发的数据源。落出站适配器封装文件读写与 seq 分配。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/adapters/file-event-log.ts：append(sessionId, event): { seq }（分配下一个 seq、序列化一行追加写）、
+    readAfter(sessionId, afterSeq): AsyncIterable<{ seq, event }>（读 seq>afterSeq 的行）。文件路径每会话隔离；seq 单进程内由内存计数或读末行恢复。
+    新建同目录 *.test.ts（用 tmpdir）：连续 append 的 seq 严格 +1；append-only 不覆盖既有行；readAfter(N) 只返 seq>N 且有序；空/不存在日志 readAfter 返回空；坏行（脏 JSON）跳过不炸。
+    本期单机单进程，不处理多进程并发写。import type + .js；术语中文；密钥绝不写入日志。不改 packages/core。
+- id: "accept-4-post-stream-create-session-with-options"
+  title: POST /api/sessions/stream 新建会话（完整 options + 首句，首个 SSE 事件回推新 session id）
+  description: >-
+    POST /api/sessions/stream：body 带完整 query options（工作目录/模型/mode/thinking/context1m/skills 等）+ 第一句话。
+    经 C1.ManageSessionUseCase.create 建会话 → 首个 SSE 事件回推新 session id → 经 C2.StartStreamUseCase.start 跑第一轮 →
+    消费 StartStreamResult.events，每事件一式三份（file-event-log.append 拿 seq → SSE id:seq+data: 推本连接 → publish 到广播中枢）。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/controllers/session-stream.controller.ts（或并入既有 chat controller）：POST /api/sessions/stream 返回 text/event-stream。
+    请求体 DTO 映射 CreateSessionInput（C1）+ StartStreamInput（C2）；先经 C1.ManageSessionUseCase.create 建会话 → 首事件推 { type:'session', sessionId }
+    → 经 C2.StartStreamUseCase.start 起第一轮 → 消费 events：每事件经 accept-3 file-event-log.append 拿 seq → 写 SSE（id: seq, data: JSON）本连接 → 经 accept-2 中枢 publish 广播。
+    终态落最终 assistant 消息由核心 c2-7 接线经 C1.AppendMessageUseCase 负责，控制器不重复落库、不边流塞 SQLite。
+    e2e（supertest + stub/假 runtime）断言：首事件含新 sessionId、后续事件带递增 seq、options 正确透传。真第一轮需真实 litellm（属 accept-9）。
+    复用 C1 ManageSession（packages/core/src/conversation/usecases/manage-session.ts）、C2 StartStream。import type + .js；术语中文；绑 loopback、无鉴权（记录在案）；密钥不回显。不改 packages/core。
+- id: "accept-5-get-stream-attach-existing-session"
+  title: GET /api/sessions/:id/stream 挂载已有会话（订阅广播中枢滚 SSE）
+  description: >-
+    GET /api/sessions/:id/stream：给 id 就挂上，一直收 SSE。控制器订阅 accept-2 中枢的该 sessionId，把后续该会话所有回合事件实时推给本连接；
+    连接断开时 unsubscribe。挂载本身不触发新回合（回合由 POST /messages 触发），只接入广播。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    在 session-stream.controller.ts 加 GET /api/sessions/:id/stream：返回 text/event-stream；订阅 accept-2 中枢 subscribe(sessionId, listener)
+    → 收到广播事件即写 SSE（id: seq, data: JSON）；连接 close 事件调 unsubscribe（无泄漏）。挂载不调 StartStream。
+    e2e 断言：先挂载再对同会话 publish → 该连接收到；断开后中枢订阅者集合清空；不同会话互不串。（Last-Event-ID 补发的完整行为属 accept-7，本故事只做纯实时挂载。）
+    复用 accept-2 中枢。import type + .js；术语中文；无鉴权（记录在案）。不改 packages/core。
+- id: "accept-6-post-messages-trigger-turn-broadcast"
+  title: POST /api/sessions/:id/messages 发消息触发一轮 + 广播给所有挂载连接
+  description: >-
+    POST /api/sessions/:id/messages：curl 发，立即返回（不等回合结束），触发新一轮；事件广播给所有挂在该会话 stream 上的连接。
+    经 C2.StartStreamUseCase.start 起一轮，事件流消费后每事件一式三份（file-event-log append 拿 seq → publish 到中枢 fan-out 给所有 GET stream 订阅者）。详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    加 POST /api/sessions/:id/messages handler：立即 202/200 返回受理确认（如 { accepted:true, streamId }，不阻塞事件流）；
+    后台经 C2.StartStreamUseCase.start(sessionId, content, ...) 起一轮 → 消费 events：每事件经 accept-3 append 拿 seq + 经 accept-2 中枢 publish 广播。
+    终态最终消息落库由核心 c2-7 经 C1.AppendMessageUseCase 负责，控制器不重复落库。
+    e2e（stub runtime）断言：POST 立即返回；两个挂在该会话的 GET stream 连接都收到该轮事件、seq 一致递增；事件写进文件日志。真回合需真实 litellm（属 accept-9）。
+    复用 C2 StartStream、accept-2 中枢、accept-3 日志。import type + .js；术语中文；无鉴权（记录在案）。不改 packages/core。
+- id: "accept-7-resume-replay-via-last-event-id"
+  title: Last-Event-ID 断线补发（从文件日志回放 seq 之后事件再接实时流）
+  description: >-
+    客户端带 Last-Event-ID: N 重连 GET /api/sessions/:id/stream → 先经 accept-3 file-event-log.readAfter(sessionId, N) 逐条补发 seq>N 的历史事件（带原 seq 作 SSE id）
+    → 补发完毕再接上实时流（订阅 accept-2 中枢）。补发与实时衔接不丢不重。详见 SPEC.md 的 CAP-7。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    编辑 GET /api/sessions/:id/stream：读 Last-Event-ID header（无则从头/仅实时，按约定固定规则并注释）→ 经 accept-3 readAfter(sessionId, N) 回放 seq>N 事件（带原 seq）
+    → 回放到当前末尾 seq 后切换订阅 accept-2 中枢实时流，处理回放期间新到事件的衔接避免缝隙/重复（如回放后再订阅、或订阅后过滤已回放 seq）。
+    e2e 断言：预置若干带 seq 的事件入日志 → 带 Last-Event-ID: k 连接 → 只收 seq>k 有序、不含 seq<=k、衔接实时不丢不重。可用文件日志+假中枢纯 e2e（不需真 AI）。
+    复用 accept-2 中枢、accept-3 日志。import type + .js；术语中文；无鉴权（记录在案）。不改 packages/core。
+- id: "accept-8-cli-listen-client-new-and-attach"
+  title: CLI 监听客户端（listen --new / listen --session <id>，断线重连带 Last-Event-ID）
+  description: >-
+    一个只监听的 CLI（替代前端的验收工具）：--new 走 POST /api/sessions/stream（带默认/传入 options+首句），从首事件拿新 session id 并打印，滚动打印流式事件；
+    --session <id> 走 GET /api/sessions/:id/stream 挂载已有会话滚动打印。支持断线重连带 Last-Event-ID（记住最后 seq）。详见 SPEC.md 的 CAP-8。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/cli/listen.ts（或 apps/api/bin/listen.*，配 package.json bin/script）：解析 --new / --session <id> / 可选 options；
+    建立 SSE 连接（fetch/EventSource），解析 id:/data:，按事件类型友好打印（text/thinking/tool_use/tool_result/status/result 等）；记录最后收到的 seq，断线重连带 Last-Event-ID header。
+    --new 打印回推的新 session id。CLI 只做 SSE 客户端+打印，不含业务逻辑、不落/不打印任何密钥。
+    可对本地 stub server 冒烟（--new 拿并打印 id、滚事件；--session 挂载打印；断线重连带 Last-Event-ID）。真 AI 端到端属 accept-9。
+    import type + .js；术语中文。不改 packages/core。
+- id: "accept-9-end-to-end-smoke-new-stream-send-reconnect"
+  title: 端到端 smoke（新建→流式→curl 发消息→断线重挂补发→续接，需真实 litellm）
+  description: >-
+    把全链路串起来验证：终端 A 跑 CLI listen --new 拿 id 实时滚第一轮事件 → 终端 B curl POST /messages 发第二句 → A 实时滚该轮全部事件 →
+    断开 A 带 Last-Event-ID 重挂补发不丢 →（可选）关掉重开 listen --session <id> 接着聊（resume 续接由 c2-6 保证）。
+    此故事需真实 litellm 代理，无法纯 npm run test 自测，属「需真实环境验证」类。详见 SPEC.md 的 CAP-9。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    产出一份可复现的端到端 smoke 步骤/脚本（如 apps/api/scripts/e2e-smoke.* 或文档化 checklist），跑通「新建→流式→发消息→断线补发→续接」。
+    需真实环境：apps/api/.env 已配 ANTHROPIC_BASE_URL=https://litellm.jereh.cn、模型 Jereh-Kimi-K2.6（密钥 ANTHROPIC_AUTH_TOKEN 只在 .env、绝不回显/入库）。
+    步骤：启 apps/api（绑 loopback 127.0.0.1，无鉴权本机用）→ 终端 A `listen --new` 拿 id 看第一轮流式 → 终端 B curl POST /api/sessions/:id/messages 发消息 → A 实时收该轮 →
+    A 断线后带 Last-Event-ID 重挂验证补发不丢 → 重开 `listen --session <id>` 验证 resume 续接。
+    这是本期最终验收的真实环境证据，不入 npm run test 自测门（前 8 个故事用 stub/假 runtime 可纯单测/e2e）。
+    术语中文；不改 packages/core；smoke 脚本/输出绝不打印密钥。

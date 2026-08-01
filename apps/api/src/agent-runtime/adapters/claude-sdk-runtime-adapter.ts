@@ -25,6 +25,7 @@ import type {
   AgentStreamEvent,
   RuntimeAvailability,
   ErrorClassifier,
+  PermissionDecision,
 } from '@codepilot/core';
 import { ClaudeSdkEventMapper } from './claude-sdk-event-mapper.js';
 
@@ -51,6 +52,19 @@ interface TurnHandle {
 }
 
 /**
+ * PermissionDecisionSink —— 决议投递到真实 SDK 的最小函数契约（c2-7 扩展占位）。
+ *
+ * 【为何是占位】真实 Claude Agent SDK 的权限决议投递语义（对齐 canUseTool 回调 / 后续 setPermissionResult）
+ *   属适配器后续完善（本 epic Non-goals 明确不接 resume/权限 SDK 细节）。本 epic 只接通**中转契约**：
+ *   构造未注入 sink 时，决议**缓存保留**（见 pendingDecisions），绝不静默丢弃（对齐 SPEC CAP-2「不吞决议」）。
+ *   注入 sink 时按 streamId + 决议投递给真实 SDK。
+ */
+export type PermissionDecisionSink = (
+  streamId: string,
+  decision: PermissionDecision,
+) => void | Promise<void>;
+
+/**
  * ClaudeSdkRuntimeAdapter —— 实现 AgentRuntimePort，封装 Claude Agent SDK。
  */
 export class ClaudeSdkRuntimeAdapter implements AgentRuntimePort {
@@ -58,26 +72,36 @@ export class ClaudeSdkRuntimeAdapter implements AgentRuntimePort {
   private readonly env: RuntimeEnvConfig;
   private readonly errorClassifier: ErrorClassifier;
   private readonly queryFn: ClaudeSdkQueryFn;
+  private readonly permissionSink?: PermissionDecisionSink;
 
   /** streamId → 在途回合句柄。终态/中断后注销（校验归属，late-unregister no-op）。 */
   private readonly handles = new Map<string, TurnHandle>();
+
+  /**
+   * 【c2-7 · CAP-2】未注入 permissionSink 时，缓存待投递的决议（按 streamId 追加），
+   * 使中转契约「不吞决议」——真实 SDK 决议投递语义完善后可读取缓存补投。绝不静默丢弃。
+   */
+  private readonly pendingDecisions = new Map<string, PermissionDecision[]>();
 
   /**
    * @param mapper          SDKMessage → AgentStreamEvent 归一器。
    * @param env             注入 query() options.env 的 .env 配置（token 绝不回显）。
    * @param errorClassifier SK.ErrorClassifier（SDK 抛错归一成 ClassifiedError）。
    * @param queryFn         query 实现，缺省用 SDK 真实 query；单测注入 mock。
+   * @param permissionSink  【c2-7 扩展】决议投递到真实 SDK 的 sink（占位，缺省缓存决议不丢弃）。
    */
   constructor(
     mapper: ClaudeSdkEventMapper,
     env: RuntimeEnvConfig,
     errorClassifier: ErrorClassifier,
     queryFn: ClaudeSdkQueryFn = query,
+    permissionSink?: PermissionDecisionSink,
   ) {
     this.mapper = mapper;
     this.env = env;
     this.errorClassifier = errorClassifier;
     this.queryFn = queryFn;
+    this.permissionSink = permissionSink;
   }
 
   /**
@@ -180,6 +204,33 @@ export class ClaudeSdkRuntimeAdapter implements AgentRuntimePort {
       // 强制兜底：即便 abort 抛错也不外泄，确保句柄被摘除。
     }
     this.unregister(turnRef.streamId, handle.query);
+  }
+
+  /**
+   * 【c2-7 · CAP-2】权限决议投递（FR-7.2/7.3）：把上层忠实转发来的决议投递给真实 SDK。
+   * C2 只中转、不裁决——原样透传 permissionRequestId/status/updatedInput/denyMessage，不篡改、不加经纪逻辑。
+   *
+   * 【真实投递属适配器后续完善】注入 permissionSink 时按 streamId + 决议投递给 SDK；
+   * 未注入 sink（本期占位）→ 缓存决议到 pendingDecisions，绝不静默丢弃（对齐 SPEC「不吞决议」）。
+   */
+  async resolvePermission(turnRef: TurnRef, decision: PermissionDecision): Promise<void> {
+    const streamId = turnRef.streamId;
+    if (this.permissionSink !== undefined) {
+      await this.permissionSink(streamId, decision);
+      return;
+    }
+    // 无 sink：缓存保留决议（不丢弃），待真实 SDK 决议投递语义完善后补投。
+    const bucket = this.pendingDecisions.get(streamId);
+    if (bucket === undefined) {
+      this.pendingDecisions.set(streamId, [decision]);
+    } else {
+      bucket.push(decision);
+    }
+  }
+
+  /** 【c2-7 · 测试/后续可见】读取某 streamId 尚未投递的缓存决议（无 sink 时的中转不丢弃佐证）。 */
+  pendingDecisionsFor(streamId: string): ReadonlyArray<PermissionDecision> {
+    return this.pendingDecisions.get(streamId) ?? [];
   }
 
   /**

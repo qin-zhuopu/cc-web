@@ -76,6 +76,24 @@ export interface TurnRef {
 }
 
 /**
+ * PermissionDecision —— 上层（经 C5 经纪）对某次权限请求的决议投影（只读值对象）。
+ *
+ * 【c2-7 扩展】本类型随 CAP-2「权限决议中转」新增，供 resolvePermission 把上层决议
+ *   忠实投递给对应 Runtime 适配器。C2 只中转、不做经纪判定（自动批准/超时拒绝归 C5）。
+ *
+ *  - permissionRequestId：定向匹配的权限请求标识（对齐 PermissionRequest.id / permission_resolved.permissionRequestId）。
+ *  - status：决议结果——'allow'（本次批准）/ 'allow_session'（本会话内批准同类）/ 'deny'（拒绝）。
+ *  - updatedInput：可选，批准时上层可下发修订后的工具入参（Runtime 支持时生效），原样透传。
+ *  - denyMessage：可选，拒绝时回传给 Runtime/模型的说明文案，原样透传。
+ */
+export interface PermissionDecision {
+  readonly permissionRequestId: string;
+  readonly status: 'allow' | 'allow_session' | 'deny';
+  readonly updatedInput?: Readonly<Record<string, unknown>>;
+  readonly denyMessage?: string;
+}
+
+/**
  * AgentRuntimePort —— C2 自有出站端口（对外提供 → C3 复用，对齐 architecture §5.1）。
  *
  * 实现位置：三适配器 ClaudeSdkRuntimeAdapter / NativeRuntimeAdapter / CodexRuntimeAdapter
@@ -93,4 +111,9 @@ export interface AgentRuntimePort {
   forceKillTurn(turnRef: TurnRef): void;
   /** 非 spawn 的可用性探测（Codex 探 binary/版本，不启进程）。 */
   availability(): Promise<RuntimeAvailability>;
+  /**
+   * 【c2-7 扩展 · CAP-2】把上层权限决议忠实投递给对应回合的 Runtime（FR-7.2/7.3）。
+   * C2 只中转、不裁决；按 turnRef.streamId 定位适配器委派。可同步或异步完成。
+   */
+  resolvePermission(turnRef: TurnRef, decision: PermissionDecision): void | Promise<void>;
 }
