@@ -15,6 +15,10 @@ _bmad/custom/config.user.toml
 # 以支撑 dev-auto 无人值守链路的进度可追溯与中断恢复。
 # logs
 *.log
+.log-claude/
 # os
 .DS_Store
 Thumbs.db
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
