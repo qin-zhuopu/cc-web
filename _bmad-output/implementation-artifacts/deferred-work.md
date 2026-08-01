@@ -54,3 +54,28 @@
   summary: 【需人工介入 · 会话模型失效阻塞】EPIC-ACCEPT 的 accept-5/6/7/8 及 merge/review/e2e-smoke 波次全部失败，报 `400 [kiro/claude-opus-4.8] Invalid model ID: Please select a different model`。根因是 workflow 子代理继承的会话模型 `kiro/claude-opus-4.8` 在运行中途失效（harness/CLI 层模型配置，非 .env 里的 litellm 模型，非代码问题）。resume 会用同一失效模型，重跑仍 400。已落地并门禁通过（678 测试全绿、守卫 0 命中）的是 accept-1~4：stub-provider-repository / session-sse-hub / file-event-log / session-stream.controller（POST /api/sessions/stream 新建）。
   待续：切换到可用会话模型后，用 Workflow({scriptPath: ".../wf-accept.mjs", resumeFromRunId: "wf_76ad1377-0ad"}) 续跑——accept-1~4 从缓存秒回，只重跑 accept-5（GET stream 挂载）/accept-6（POST messages 广播）/accept-7（Last-Event-ID 补发）/accept-8（CLI listen，cli 目录尚不存在）/merge+verify/review/accept-9（端到端 smoke，需真实 litellm）。
   evidence: accept workflow wf_76ad1377-0ad 完成通知，11 波次中 4 done 7 error，全部 error 为同一 INVALID_MODEL_ID。当前工作区已固化为门禁全绿的干净断点。
+  resolution: 【已解决】用户切换稳定会话模型后 resumeFromRunId 续跑成功，accept-5~8 全部落地（见下条「accept-9 状态更新」），本条记录的中间态已过时，保留仅作历史追溯。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【accept-9 状态更新 · 前条记录已过时】上一条「会话模型失效阻塞」记录的 accept-5/6/7/8 未落地、cli 目录尚不存在，是旧中间态。accept-9 实地核查确认：accept-5/6/7/8 **均已落地**（session-stream.controller.ts 含 GET /:id/stream 挂载 + POST /:id/messages + Last-Event-ID 补发；apps/api/src/cli/listen.ts + apps/api/bin/listen.mjs CLI 就位；对应 *.spec.ts 均在）。accept-9 的端到端 smoke 已产出可复现脚本与 checklist（apps/api/scripts/e2e-smoke.sh + e2e-smoke.md）。
+  evidence: accept-9 实地 ls + 读源码核查；smoke 脚本实跑 12/14 项通过。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【accept-9 · SDK↔litellm 模型名协商阻塞（环境层，非代码）】真实 litellm 环境下，Claude Agent SDK 经 /v1/messages 发起的回合恒报 `API Error: 400 [1211][模型不存在，请检查模型代码。]`。.env 配的 `ANTHROPIC_MODEL=Jereh-Kimi-K2.6` 在 litellm `GET /v1/models` 列表里不存在（实际是 `JerehW-kimi-k2.6`，大小写敏感）。但即便覆盖 `*_MODEL` 为网关列表里的有效名（JerehW-kimi-k2.6 / claude-kimi-k2.5 / claude-glm-5 / claude-qwen3.7-max 等），经 SDK 仍报模型不存在——而【直接】 curl 网关 `/v1/messages`（anthropic 协议）用同名模型（如 `JerehW-kimi-k2.6`、`claude-sonnet-4-5`）却能正常返回真实正文（已验证返回"你好"）。结论：litellm 的 anthropic 协议端点本身可用，阻塞在 Claude Agent SDK 与网关之间的模型名/路由协商层（SDK 可能对模型名做内部规范化或发到不同路径）。属运行时环境/SDK 兼容问题，非本 epic（apps/api 控制器/SSE/CLI）代码问题，故不擅改；建议后续①用 SDK 的 `model` 入参显式指定（若 SDK 支持）或②与网关方确认 anthropic 端点的模型别名映射或③升级 SDK 版本。c2-6 既有集成脚本 scripts/c2-6-integration-check.mts 同样失败（pre-existing，非回归）。
+  evidence: accept-9 实跑：POST /api/sessions/stream 收到 SSE 流（首事件 sessionId + seq 1→2→3 递增 + 日志落盘 + SQLite 落库全正常），但 text 事件正文为 `API Error: 400 [模型不存在]`；直接 curl /v1/messages 同名模型成功。探测脚本（已清理）测试 5 个候选模型名经 SDK 全部 400。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【accept-6 路由被 C1 MessageController 遮蔽 · 需修 accept-6】`POST /api/sessions/:id/messages` 存在路由冲突：C1 既有 `MessageController`（`@Controller('api')`）注册了 `POST sessions/:id/messages`（落 C1 消息表），accept-6 的 `SessionStreamController`（`@Controller('api/sessions')`）注册了完全相同的 `POST :id/messages`（起 C2 回合 + 广播）。NestJS 按模块注册顺序，`AppModule.imports` 里 `ConversationModule` 排在 `AgentRuntimeModule` 之前，故 C1 路由先注册、遮蔽 accept-6 的 sendMessage——实测 POST 该端点返回 500（`NOT NULL constraint failed: messages.role`，抛自 MessageController.append，因 body 无 role 字段）。accept-6 的 sendMessage 处理器永远不会被调用。修法建议（属 accept-6 范围）：①给 accept-6 端点换不同路径（如 `POST /api/sessions/:id/turn` 或 `/api/sessions/:id/chat`），或②调整 AppModule 模块顺序让 AgentRuntimeModule 在前（但会破坏 C1 既有契约、风险大），或③给 accept-6 控制器更具体的路由前缀。推荐①（改路径最干净、不影响 C1 既有 REST 契约）。注意：accept-6 的 *.spec.ts 用的是 supertest + stub runtime 直接装配 SessionStreamController，绕过了 AppModule 全量路由注册，故 e2e 测试没暴露此冲突。
+  evidence: accept-9 实跑：`POST /api/sessions/:id/messages` 返回 500，服务端日志栈追踪到 `MessageController.append`（dist/conversation/controllers/message.controller.js:40）而非 SessionStreamController.sendMessage；路由映射日志显示两个控制器都 Mapped 了同一路径。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【accept-9 · 需人工双终端验证项】以下项无法纯自动化，需人工双终端观察：(1) 终端 A `listen --new` 实时滚动打印流式事件的人眼可读性（事件类型渲染、颜色/前缀）；(2) 断线重连的人工操作流程（Ctrl+A 断开 → 重挂 → 观察补发衔接不丢不重的实时体验）；(3) 关掉重开 `listen --session <id>` 的 resume 续接（依赖真实 AI 可用 + c2-6 SDK resume，当前因模型协商阻塞无法验）。自动化脚本 e2e-smoke.sh 已覆盖可机器判定的等价项（首事件 id、seq 单调、日志/SQLite 落盘、Last-Event-ID 补发条数、CLI --new 拿 id）。等模型协商阻塞解除后，这些人工项应能顺带验通。
+  evidence: accept-9 任务约束（SPEC CAP-9 明确「需真实环境验证、人工/脚本端到端」，断线重连的人工操作无法纯自测）。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【F1 seq 双重分配 · 已修复】SessionStreamController + SessionSseHub 的 seq 原在生产者侧（POST /stream、consumeInBackground）和 GET /:id/stream 的 listener 各 append 一次，致同一事件落盘 N+1 行、断线补发重复。修复：广播信封改为 SealedStreamEvent={seq,event}，seq 只在生产者侧 append 唯一分配、随 publish 携带，listener 复用 seq 写帧不再 append。补了 F1 回归测试（N 事件恰好 N 行、seq 1..N 严格递增无重复、补发只收每事件一次）。
+  evidence: 对抗评审 F1 阻断。修复后门禁 727 测试全绿、守卫 0 命中（较修复前 +3 测试为 F1 回归）。
+
+- source_spec: `epic-accept/SPEC.md`
+  summary: 【accept-6 路由冲突 · 需用户拍板路径 · 阻断该端点功能】POST /api/sessions/:id/messages 被 C1 既有 MessageController（@Controller('api')，注册 POST sessions/:id/messages 落消息表）遮蔽——AppModule 里 ConversationModule 排在 AgentRuntimeModule 前，C1 路由先注册，accept-6 的 sendMessage 永不被调用（实测 POST 返回 500 NOT NULL constraint failed: messages.role）。这是端点路径设计与 C1 既有 REST 契约撞车，非局部 bug。待用户决策路径（建议 accept-6 改 POST /api/sessions/:id/turn 或 /:id/chat，不动 C1 既有契约，风险最低；改后需同步 SPEC CAP-6 + accept-8 CLI listen 发消息路径）。accept-6 标 backlog、epic-accept 保持 in-progress 直到解决。
+  evidence: 路由映射日志显示两控制器都 Mapped 同一路径；POST 实际栈追踪到 MessageController.append 非 SessionStreamController.sendMessage。

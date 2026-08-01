@@ -19,10 +19,25 @@
 import type { AgentStreamEvent } from '@codepilot/core';
 
 /**
- * SessionEventListener —— 单个 SSE 连接的事件回调。
- * 每个挂载到某会话的 GET /:id/stream 连接注册一个 listener；收到广播即写入该连接的 SSE 流。
+ * SealedStreamEvent —— 已落盘并分配好 seq 的广播事件信封。
+ *
+ * 【为何带 seq】seq 必须由【生产者侧】（发起回合、消费 events 流的那一侧）在 FileEventLog.append
+ *   时分配【唯一一次】。若 GET /:id/stream 的订阅者 listener 再 append 一次，同一事件会被写进
+ *   日志 N+1 行、分配 N+1 个不同 seq，破坏「一行一事件」与断线补发「不丢不重」（见评审 F1）。
+ *   故 publish 携带 { seq, event }，listener 直接复用收到的 seq 写 SSE 帧，绝不二次 append。
  */
-export type SessionEventListener = (event: AgentStreamEvent) => void;
+export interface SealedStreamEvent {
+  /** 该事件在会话内单调递增的序号（== 文件日志 seq == SSE id 字段 == 断线重连游标）。 */
+  readonly seq: number;
+  /** 归一事件本体（透传不伪造）。 */
+  readonly event: AgentStreamEvent;
+}
+
+/**
+ * SessionEventListener —— 单个 SSE 连接的事件回调。
+ * 每个挂载到某会话的 GET /:id/stream 连接注册一个 listener；收到 { seq, event } 即写入该连接的 SSE 流。
+ */
+export type SessionEventListener = (sealed: SealedStreamEvent) => void;
 
 /**
  * SessionSseHub —— 按会话的内存广播中枢。
@@ -69,21 +84,24 @@ export class SessionSseHub {
   }
 
   /**
-   * 向某会话的所有活跃订阅者 fan-out 一个事件。
+   * 向某会话的所有活跃订阅者 fan-out 一个【已落盘分配好 seq】的事件。
+   *
+   * 调用方须先经 FileEventLog.append 拿到 seq，再以 { seq, event } 信封广播——保证每事件只 append
+   * 一次（seq 单一分配，杜绝评审 F1 的双重 append 致补发重复）。
    *
    * best-effort：单个 listener 抛错被吞并继续派发其余订阅者，不让一个坏连接影响同会话其它连接。
    * 无订阅者时静默返回（回合事件仍会经文件日志持久，补发时可回放）。
    *
    * 派发前对订阅者集合做快照，避免 listener 在派发过程中订阅/退订导致的迭代器失效。
    */
-  publish(sessionId: string, event: AgentStreamEvent): void {
+  publish(sessionId: string, sealed: SealedStreamEvent): void {
     const listeners = this.subscribers.get(sessionId);
     if (listeners === undefined || listeners.size === 0) {
       return;
     }
     for (const listener of [...listeners]) {
       try {
-        listener(event);
+        listener(sealed);
       } catch {
         // best-effort：吞掉单个订阅者的错误，继续派发其余订阅者。
       }

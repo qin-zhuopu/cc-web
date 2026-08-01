@@ -12,21 +12,27 @@ function textEvent(text: string): AgentStreamEvent {
   return { type: 'text', text };
 }
 
+// 构造一个【已落盘分配好 seq】的广播事件信封（对齐 SealedStreamEvent 契约）。
+// seq 必须由生产者侧唯一分配；listener 收到 { seq, event } 后直接复用该 seq，不再二次 append。
+function sealed(seq: number, text: string): { seq: number; event: AgentStreamEvent } {
+  return { seq, event: textEvent(text) };
+}
+
 describe('SessionSseHub', () => {
-  it('同一 sessionId 的多个订阅者都收到同一事件', () => {
+  it('同一 sessionId 的多个订阅者都收到同一信封（{ seq, event }）', () => {
     const hub = new SessionSseHub();
     const a = vi.fn();
     const b = vi.fn();
     hub.subscribe('s1', a);
     hub.subscribe('s1', b);
 
-    const ev = textEvent('hello');
-    hub.publish('s1', ev);
+    const envelope = sealed(7, 'hello');
+    hub.publish('s1', envelope);
 
     expect(a).toHaveBeenCalledTimes(1);
-    expect(a).toHaveBeenCalledWith(ev);
+    expect(a).toHaveBeenCalledWith(envelope);
     expect(b).toHaveBeenCalledTimes(1);
-    expect(b).toHaveBeenCalledWith(ev);
+    expect(b).toHaveBeenCalledWith(envelope);
   });
 
   it('unsubscribe 后不再收到事件', () => {
@@ -34,11 +40,11 @@ describe('SessionSseHub', () => {
     const listener = vi.fn();
     const unsubscribe = hub.subscribe('s1', listener);
 
-    hub.publish('s1', textEvent('first'));
+    hub.publish('s1', sealed(1, 'first'));
     expect(listener).toHaveBeenCalledTimes(1);
 
     unsubscribe();
-    hub.publish('s1', textEvent('second'));
+    hub.publish('s1', sealed(2, 'second'));
     // 退订后不再增加调用次数。
     expect(listener).toHaveBeenCalledTimes(1);
   });
@@ -53,7 +59,7 @@ describe('SessionSseHub', () => {
     unsubA();
     expect(() => unsubA()).not.toThrow();
 
-    hub.publish('s1', textEvent('x'));
+    hub.publish('s1', sealed(1, 'x'));
     // a 已退订不收；b 仍在，重复退订 a 不应误删 b。
     expect(a).not.toHaveBeenCalled();
     expect(b).toHaveBeenCalledTimes(1);
@@ -66,7 +72,7 @@ describe('SessionSseHub', () => {
     hub.subscribe('s1', onS1);
     hub.subscribe('s2', onS2);
 
-    hub.publish('s1', textEvent('to-s1'));
+    hub.publish('s1', sealed(1, 'to-s1'));
 
     expect(onS1).toHaveBeenCalledTimes(1);
     expect(onS2).not.toHaveBeenCalled();
@@ -82,14 +88,14 @@ describe('SessionSseHub', () => {
     hub.subscribe('s1', throwing);
     hub.subscribe('s1', healthy);
 
-    expect(() => hub.publish('s1', textEvent('x'))).not.toThrow();
+    expect(() => hub.publish('s1', sealed(1, 'x'))).not.toThrow();
     expect(throwing).toHaveBeenCalledTimes(1);
     expect(healthy).toHaveBeenCalledTimes(1);
   });
 
   it('无订阅者时 publish 静默返回、不抛', () => {
     const hub = new SessionSseHub();
-    expect(() => hub.publish('none', textEvent('x'))).not.toThrow();
+    expect(() => hub.publish('none', sealed(1, 'x'))).not.toThrow();
   });
 
   it('退订最后一个订阅者后，再向该会话 publish 不触达任何回调（条目已清理无泄漏）', () => {
@@ -101,9 +107,20 @@ describe('SessionSseHub', () => {
     // 清理后重新订阅仍应正常工作（验证条目被移除而非残留脏状态）。
     const again = vi.fn();
     hub.subscribe('s1', again);
-    hub.publish('s1', textEvent('y'));
+    hub.publish('s1', sealed(1, 'y'));
 
     expect(listener).not.toHaveBeenCalled();
     expect(again).toHaveBeenCalledTimes(1);
+  });
+
+  it('信封的 seq 与 event 原样透传给订阅者（信封字段不被中枢篡改）', () => {
+    const hub = new SessionSseHub();
+    const listener = vi.fn();
+    hub.subscribe('s1', listener);
+
+    const envelope = sealed(42, 'payload');
+    hub.publish('s1', envelope);
+
+    expect(listener).toHaveBeenCalledWith({ seq: 42, event: { type: 'text', text: 'payload' } });
   });
 });

@@ -195,9 +195,9 @@ development_status:
   accept-2-sse-broadcast-hub-per-session: done
   accept-3-event-log-file-adapter-append-with-seq: done
   accept-4-post-stream-create-session-with-options: done
-  accept-5-get-stream-attach-existing-session: backlog
+  accept-5-get-stream-attach-existing-session: done
   accept-6-post-messages-trigger-turn-broadcast: backlog
-  accept-7-resume-replay-via-last-event-id: backlog
-  accept-8-cli-listen-client-new-and-attach: backlog
-  accept-9-end-to-end-smoke-new-stream-send-reconnect: backlog
+  accept-7-resume-replay-via-last-event-id: done
+  accept-8-cli-listen-client-new-and-attach: done
+  accept-9-end-to-end-smoke-new-stream-send-reconnect: deferred
   epic-accept-retrospective: optional
