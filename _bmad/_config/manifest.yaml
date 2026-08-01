@@ -1,26 +1,26 @@
 installation:
   version: 6.10.0
-  installDate: 2026-07-30T09:55:35.704Z
-  lastUpdated: 2026-08-01T01:32:32.707Z
+  installDate: 2026-08-01T06:17:36.297Z
+  lastUpdated: 2026-08-01T06:17:36.297Z
 modules:
   - name: core
     version: 6.10.0
-    installDate: 2026-07-30T09:55:34.978Z
-    lastUpdated: 2026-08-01T01:32:32.685Z
+    installDate: 2026-08-01T06:17:35.349Z
+    lastUpdated: 2026-08-01T06:17:36.281Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
     version: 6.10.0
-    installDate: 2026-07-30T09:55:35.551Z
-    lastUpdated: 2026-08-01T01:32:32.687Z
+    installDate: 2026-08-01T06:17:35.518Z
+    lastUpdated: 2026-08-01T06:17:36.283Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmad-loop
     version: v0.9.0
-    installDate: 2026-08-01T01:32:29.727Z
-    lastUpdated: 2026-08-01T01:32:32.694Z
+    installDate: 2026-08-01T06:17:35.571Z
+    lastUpdated: 2026-08-01T06:17:36.289Z
     source: external
     npmPackage: null
     repoUrl: https://github.com/bmad-code-org/bmad-loop
@@ -28,8 +28,8 @@ modules:
     sha: 72551742617b4e1c9cb72d2038dc67ce973f7eea
   - name: tea
     version: v1.19.1
-    installDate: 2026-08-01T01:32:32.055Z
-    lastUpdated: 2026-08-01T01:32:32.703Z
+    installDate: 2026-08-01T06:17:36.042Z
+    lastUpdated: 2026-08-01T06:17:36.293Z
     source: external
     npmPackage: bmad-method-test-architecture-enterprise
     repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
@@ -37,8 +37,8 @@ modules:
     sha: 74cf6e6adf5a6f46614788f184f340ea58336157
   - name: bmb
     version: v2.1.0
-    installDate: 2026-08-01T01:32:32.491Z
-    lastUpdated: 2026-08-01T01:32:32.707Z
+    installDate: 2026-08-01T06:17:36.136Z
+    lastUpdated: 2026-08-01T06:17:36.297Z
     source: external
     npmPackage: bmad-builder
     repoUrl: https://github.com/bmad-code-org/bmad-builder
@@ -46,4 +46,3 @@ modules:
     sha: d54981a8ba3b990148256455ccf4e6c1cb4918f0
 ides:
   - claude-code
-  - kiro

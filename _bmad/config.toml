@@ -11,9 +11,7 @@
 # ─────────────────────────────────────────────────────────────────
 
 [core]
-project_name = "codepilot-web"
-document_output_language = "中文"
-output_folder = "{project-root}/_bmad-output"
+output_folder = "_bmad-output"
 
 [modules.bmm]
 planning_artifacts = "{project-root}/_bmad-output/planning-artifacts"
@@ -23,13 +21,13 @@ project_knowledge = "{project-root}/docs"
 [modules.tea]
 test_artifacts = "{project-root}/_bmad-output/test-artifacts"
 tea_use_playwright_utils = true
-tea_use_pactjs_utils = true
+tea_use_pactjs_utils = false
 tea_pact_mcp = "none"
 tea_browser_automation = "auto"
 tea_execution_mode = "auto"
 tea_capability_probe = true
-test_stack_type = "fullstack"
-ci_platform = "jenkins"
+test_stack_type = "auto"
+ci_platform = "auto"
 test_framework = "auto"
 risk_threshold = "p1"
 test_design_output = "_bmad-output/test-artifacts/test-design"
