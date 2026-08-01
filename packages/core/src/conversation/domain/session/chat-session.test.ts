@@ -67,7 +67,7 @@ describe('ChatSession 类型层断言', () => {
     expect(bad).toBeDefined();
   });
 
-  it('混入运行时/Provider/Codex 字段应被类型系统拒绝（字段归属铁律）', () => {
+  it('混入运行时/Provider 内部字段应被类型系统拒绝（字段归属铁律）', () => {
     const good = {
       id: 's-3',
       title: 'x',

@@ -10,7 +10,7 @@
 //   forwardRef 两侧成对声明才能解环：本 Module imports forwardRef(() => ConversationModule) 拿 C1 用例 token；
 //   ConversationModule 侧 imports forwardRef(() => AgentRuntimeModule) 拿 TITLE_GENERATOR。
 //
-// 【本期范围】只注册 CLAUDE_SDK 适配器（Native/Codex deferred）；C7 ProviderReadPort 用最小 stub
+// 【本期范围】只注册 CLAUDE_SDK 适配器（其他运行时待将来具名 agent 接入）；C7 ProviderReadPort 用最小 stub
 //   （写死单个 anthropic provider），C7 ProviderManagementModule 落地后替换。
 //
 // 【安全提醒】ChatController/PermissionController/RuntimeController 均无鉴权，仅限本机单机运行，勿暴露公网。

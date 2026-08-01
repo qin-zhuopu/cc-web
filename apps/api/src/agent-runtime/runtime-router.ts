@@ -4,8 +4,9 @@
 // 【边界】本文件在 apps/api（框架层）。只 import type 核心端口/类型 + 值 import RuntimeKind 枚举 + ErrorCode；
 //   绝不污染 packages/core。
 //
-// 【本期范围】只注册 CLAUDE_SDK → ClaudeSdkRuntimeAdapter；NATIVE/CODEX 未注册（deferred，接口/路由位保留）。
+// 【本期范围】只注册 CLAUDE_SDK → ClaudeSdkRuntimeAdapter；其他 RuntimeKind 未注册（待将来具名 agent 接入）。
 //   路由到未注册 Runtime → fail-fast 归 ClassifiedError（不静默返回空、不卡死核心，NFR-4）。
+//   AgentRuntimePort 是预留的未具名扩展点：本期不预先具名任何尚未实现的 agent。
 //
 // 【turnRef 定位 runtimeKind】interrupt/forceKillTurn 的 turnRef 只含 streamId，不带 runtimeKind。
 //   router 在 run 时记录 streamId → runtimeKind，供后续按 turnRef 定位对应适配器。回合终态/中断后清除。
@@ -119,7 +120,7 @@ export class RuntimeRouter implements AgentRuntimePort {
   /** 未注册 Runtime 的 fail-fast 事件流：产出一个归一 error 事件（不静默、不卡死核心）。 */
   private async *failFastStream(kind: RuntimeKind): AsyncIterableIterator<AgentStreamEvent> {
     const classified = this.errorClassifier.classify(
-      new Error(`RuntimeKind "${kind}" 未注册适配器（本期只实现 CLAUDE_SDK；Native/Codex deferred）`),
+      new Error(`RuntimeKind "${kind}" 未注册适配器（本期只实现 CLAUDE_SDK；其他运行时待将来具名 agent 接入）`),
     );
     yield { type: 'error', error: classified };
   }

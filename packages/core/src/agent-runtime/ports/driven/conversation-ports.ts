@@ -10,7 +10,7 @@
 //   ConversationModule 提供并经 NestJS DI 注入；C1↔C2 环在 Module 层用 forwardRef 解（本 epic 不碰）。
 //
 // 【铁律】核心零框架：不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；类型-only import 用 import type + .js 扩展名。
+// node:child_process；类型-only import 用 import type + .js 扩展名。
 //
 // 【本故事（c2-1-6）范围】只转出 C1 用例端口类型 + 给 PromptMessage 投影形状，不接 DI、不实现用例。
 

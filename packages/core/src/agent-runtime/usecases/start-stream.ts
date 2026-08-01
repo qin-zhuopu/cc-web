@@ -17,7 +17,7 @@
 // 本故事不写死假业务值到最终产物。
 //
 // 【铁律 · 核心零框架】本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex / uuid；不直调系统时钟 / 不直调 randomUUID——
+// node:child_process / uuid；不直调系统时钟 / 不直调 randomUUID——
 // streamId 经注入 IdGenerator，取时经 StreamSession 注入的 Clock。
 // 类型-only import 用 import type + .js 扩展名（verbatimModuleSyntax），值 import 走普通 import。
 
@@ -308,15 +308,14 @@ async function* consumeRunStream(
 /**
  * resolveRuntimeKind —— 纯映射：C7 只读解析出的 protocol → 发起时锁定的 RuntimeKind（CAP-2 / FR-2.2）。
  *
- * 语义依据 architecture §3.6（RuntimeKind：claude-sdk / native / codex）与 §5.3（C2 只读消费 C7 协议）：
+ * 语义依据 architecture §3.6 与 §5.3（C2 只读消费 C7 协议）：
  *  - anthropic：Anthropic 原生协议，走 @anthropic-ai/claude-agent-sdk 的 Query → CLAUDE_SDK。
- *  - openai-compatible / xai / openrouter / bedrock / vertex / google：均为 HTTP 系（OpenAI 兼容 / 各家 HTTP 网关），
- *    统一走 Native HTTP provider 的 SSE 流 → NATIVE。
+ *  - 其他所有协议（HTTP 系 / 图像生成 / 无法判定）：本期 unsupported，返回 null。
  *
- * 【降级纪律 · 反臆造（CAP-2）】映射表未覆盖的协议一律不静默选错 Runtime：
- *  - unknown：C7 无法判定协议，C2 亦不臆造 → 返回 null，由调用方经 ErrorClassifier 归错并抛出。
- *  - gemini-image / openai-image：图像生成协议，非对话 Runtime（本 epic 三 RuntimeKind 均为对话运行时），
- *    不映射到任一对话 Runtime → 返回 null，由调用方归错并抛出（待专门的图像路径接入后再扩展映射）。
+ * 【为何不预设协议→运行时映射表】核心只认 CLAUDE_SDK 这一个已实现运行时。
+ *   新协议的支持属将来的新 agent 适配器自己声明的事——核心不预先具名"某协议→某具名运行时"
+ *   （那会把尚未实现的 agent 泄露固化进核心）。本期对未支持协议一律返回 null，
+ *   由调用方/适配器决定 unsupported 怎么处理（fail-fast 抛错或返回 unsupported 视图）。
  *
  * 注意：这里选用的是 domain/runtime/ 处的 RuntimeKind enum（StreamSession.init.runtimeKind 所需）。
  * 因两处同名 enum 字面量值相同，锁进 StreamSession 后如需传 RuntimeRunRequest（ports/ 处），
@@ -333,11 +332,10 @@ export function resolveRuntimeKind(view: ResolvedProviderView): RuntimeKind | nu
     case 'bedrock':
     case 'vertex':
     case 'google':
-      return RuntimeKind.NATIVE;
     case 'gemini-image':
     case 'openai-image':
     case 'unknown':
-      // 非对话 Runtime / 无法判定：不选错，交调用方归错。
+      // 本期不支持的协议：不臆造映射、不静默选错，交调用方/适配器决定 unsupported 处理。
       return null;
     default: {
       // 穷尽性守卫：ProviderProtocol 新增字面量时此处编译期报错，逼显式决策，杜绝静默降级。
@@ -351,18 +349,14 @@ export function resolveRuntimeKind(view: ResolvedProviderView): RuntimeKind | nu
  * toRuntimeRunKind —— 把锁进 StreamSession 的 domain/runtime/ 处 RuntimeKind 值，
  * 等价映射为 RuntimeRunRequest 所需的 ports/runtime-kind.ts 处 RuntimeKind 值（CAP-3 组装请求用）。
  *
- * 两处 enum 同名但为不同类型（既有技术债，本 epic 只复用不动它）；二者字面量值相同
- *（claude-sdk / native / codex），此处按字面量在边界做值层面的等价传递，绝不 as any、绝不合并两个 enum。
- * switch 穷尽 domain 处的三个成员，新增成员时编译期在此报错，逼显式决策。
+ * 两处 enum 同名但为不同类型（既有技术债，本 epic 只复用不动它）；二者字面量值相同（本期 claude-sdk），
+ * 此处按字面量在边界做值层面的等价传递，绝不 as any、绝不合并两个 enum。
+ * switch 穷尽 domain 处的成员，新增成员时编译期在此报错，逼显式决策。
  */
 function toRuntimeRunKind(kind: RuntimeKind): RuntimeRunKind {
   switch (kind) {
     case RuntimeKind.CLAUDE_SDK:
       return RuntimeRunKind.CLAUDE_SDK;
-    case RuntimeKind.NATIVE:
-      return RuntimeRunKind.NATIVE;
-    case RuntimeKind.CODEX:
-      return RuntimeRunKind.CODEX;
     default: {
       const _exhaustive: never = kind;
       return _exhaustive;

@@ -269,24 +269,21 @@ describe('resolveRuntimeKind 纯映射（CAP-2 / FR-2.2）', () => {
     expect(resolveRuntimeKind(viewWith('anthropic'))).toBe(RuntimeKind.CLAUDE_SDK);
   });
 
-  it('HTTP 系协议 → NATIVE', () => {
-    const httpProtocols: ProviderProtocol[] = [
+  it('本期不支持的协议（HTTP 系 / 图像 / 无法判定）→ null（核心不预设协议→运行时映射，交调用方处理）', () => {
+    const unsupported: ProviderProtocol[] = [
       'openai-compatible',
       'xai',
       'openrouter',
       'bedrock',
       'vertex',
       'google',
+      'gemini-image',
+      'openai-image',
+      'unknown',
     ];
-    for (const protocol of httpProtocols) {
-      expect(resolveRuntimeKind(viewWith(protocol))).toBe(RuntimeKind.NATIVE);
+    for (const protocol of unsupported) {
+      expect(resolveRuntimeKind(viewWith(protocol))).toBeNull();
     }
-  });
-
-  it('非对话协议 / 无法判定 → null（不静默选错）', () => {
-    expect(resolveRuntimeKind(viewWith('gemini-image'))).toBeNull();
-    expect(resolveRuntimeKind(viewWith('openai-image'))).toBeNull();
-    expect(resolveRuntimeKind(viewWith('unknown'))).toBeNull();
   });
 });
 
@@ -296,25 +293,6 @@ describe('StartStreamService.start Runtime 选择与锁定（CAP-2 / FR-2.2）',
     const result = await service.start(input);
     const session = registry.get(result.streamId);
     expect(session!.snapshot().runtimeKind).toBe(RuntimeKind.CLAUDE_SDK);
-  });
-
-  it('openai-compatible → 锁定 NATIVE 进 StreamSession.snapshot().runtimeKind', async () => {
-    const { service, registry } = makeServiceWithProvider(viewWith('openai-compatible'));
-    const result = await service.start(input);
-    const session = registry.get(result.streamId);
-    expect(session!.snapshot().runtimeKind).toBe(RuntimeKind.NATIVE);
-  });
-
-  it('不同 protocol 路由到不同 RuntimeKind', async () => {
-    const anthropic = makeServiceWithProvider(viewWith('anthropic'));
-    const openai = makeServiceWithProvider(viewWith('openai-compatible'));
-    const aRes = await anthropic.service.start(input);
-    const oRes = await openai.service.start(input);
-    const aKind = anthropic.registry.get(aRes.streamId)!.snapshot().runtimeKind;
-    const oKind = openai.registry.get(oRes.streamId)!.snapshot().runtimeKind;
-    expect(aKind).toBe(RuntimeKind.CLAUDE_SDK);
-    expect(oKind).toBe(RuntimeKind.NATIVE);
-    expect(aKind).not.toBe(oKind);
   });
 
   it('只经注入的 providerId 调 resolve，且只调 resolve（只读纪律，无写方法）', async () => {

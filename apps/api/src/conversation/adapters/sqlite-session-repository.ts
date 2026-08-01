@@ -1,6 +1,6 @@
 // apps/api/src/conversation/adapters/sqlite-session-repository.ts
 // SessionRepository 出站端口的 SQLite 适配器（epic-c1-6 / c1-6-3）。
-// 读写 chat_sessions 的会话本体列；运行时/Provider/Codex 寄存列不由本适配器负责（字段归属铁律）。
+// 读写 chat_sessions 的会话本体列；运行时/Provider 内部寄存列不由本适配器负责（字段归属铁律）。
 //
 // 边界：本文件在 apps/api（适配器层），可 import better-sqlite3；packages/core 绝不出现。
 // import 风格：核心契约一律 import type（verbatimModuleSyntax）；相对 import 带 .js（NodeNext）。

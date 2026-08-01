@@ -15,7 +15,7 @@ export enum TerminalReasonCode {
   IDLE_TIMEOUT = 'idle_timeout', // 长时间无事件 → ErrorCode.TIMEOUT
   TOOL_TIMEOUT = 'tool_timeout', // 工具超时 → ErrorCode.PROCESS / TIMEOUT
   RUNTIME_ERROR = 'runtime_error', // Runtime 上游错误 → 由 ErrorClassifier 分类
-  PROCESS_DIED = 'process_died', // Codex app-server 僵死/退出 → ErrorCode.PROCESS
+  PROCESS_DIED = 'process_died', // 外部 agent app-server 僵死/退出 → ErrorCode.PROCESS
 }
 
 /**

@@ -48,8 +48,8 @@ import type { TitleOrigin } from './title-origin.js';
  * 仅建模「会话是什么」的 10 个本体字段，对齐 architecture §3.1。
  *
  * 【字段归属铁律 · architecture §3.1】
- * 运行时 / Provider / Codex 字段一律不进本实体，包括但不限于：
- *   sdkSessionId、codexThreadId、codexThreadProviderId、runtimeStatus、
+ * 运行时 / Provider 内部字段一律不进本实体，包括但不限于：
+ *   sdkSessionId、<agent>ThreadId、<agent>ThreadProviderId、runtimeStatus、
  *   runtimeUpdatedAt、providerId、providerName、permissionProfile、
  *   contextSummary*（C2 产出的摘要投影）。
  * 这些寄存字段属 C2 运行时 / C7 消费投影 / C5 权限，物理层迁移期可暂留同表，

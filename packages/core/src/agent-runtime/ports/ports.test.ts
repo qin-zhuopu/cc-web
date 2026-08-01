@@ -35,10 +35,8 @@ import type {
 import type { AgentStreamEvent } from '../domain/event/agent-stream-event.js';
 
 describe('RuntimeKind 枚举（对齐 architecture §3.6）', () => {
-  it('三种运行时字面量值锁定', () => {
+  it('本期唯一运行时字面量值锁定（CLAUDE_SDK）', () => {
     expect(RuntimeKind.CLAUDE_SDK).toBe('claude-sdk');
-    expect(RuntimeKind.NATIVE).toBe('native');
-    expect(RuntimeKind.CODEX).toBe('codex');
   });
 });
 

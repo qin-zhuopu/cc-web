@@ -506,7 +506,7 @@ describe('AbortStreamService.abort —— 关 turn/句柄通知契约（c2-5-5 /
     expect(runtime.forceKillCalls[0]?.streamId).toBe('stream-1');
   });
 
-  it('核心不消费 TurnRef.native —— 传入端口的 turnRef 仅设 streamId（native 恒 undefined，结构归适配器 c2-6 解析）', async () => {
+  it('核心不消费 TurnRef.handle —— 传入端口的 turnRef 仅设 streamId（handle 恒 undefined，结构归适配器 c2-6 解析）', async () => {
     const { registry } = makeActiveSession();
     // 优雅路径与兜底路径都触发：interrupt 永挂后 fire 定时器，收集两条 turnRef。
     const { service, scheduler, runtime } = makeService(registry);
@@ -515,28 +515,28 @@ describe('AbortStreamService.abort —— 关 turn/句柄通知契约（c2-5-5 /
     await flushMicrotasks();
     scheduler.fire();
 
-    // 优雅路径 interrupt 与兜底路径 forceKillTurn 传入的 turnRef 均只含 streamId、不含 native 句柄。
-    // 核心侧【绝不】构造/触碰 native；late-unregister no-op 语义归适配器 c2-6，不在核心断言。
+    // 优雅路径 interrupt 与兜底路径 forceKillTurn 传入的 turnRef 均只含 streamId、不含 handle 句柄。
+    // 核心侧【绝不】构造/触碰 handle；late-unregister no-op 语义归适配器 c2-6，不在核心断言。
     const allRefs: TurnRef[] = [...runtime.interruptCalls, ...runtime.forceKillCalls];
     expect(allRefs).toHaveLength(2);
     for (const ref of allRefs) {
       expect(ref.streamId).toBe('stream-1');
-      expect(ref.native).toBeUndefined();
-      // turnRef 仅有 streamId 一个 own key（核心未附加/未解释任何 native 结构）。
+      expect(ref.handle).toBeUndefined();
+      // turnRef 仅有 streamId 一个 own key（核心未附加/未解释任何 handle 结构）。
       expect(Object.keys(ref)).toEqual(['streamId']);
     }
   });
 
-  it('只含 streamId 的 turnRef 即可正常工作 —— 核心不依赖 native 存在（假适配器 spy）', async () => {
+  it('只含 streamId 的 turnRef 即可正常工作 —— 核心不依赖 handle 存在（假适配器 spy）', async () => {
     const { registry, session } = makeActiveSession();
-    // 假适配器全程只读 turnRef.streamId、从不读 native，编排仍正常翻终态。
+    // 假适配器全程只读 turnRef.streamId、从不读 handle，编排仍正常翻终态。
     const { service, scheduler } = makeService(registry);
 
     await service.abort('stream-1');
     await flushMicrotasks();
     scheduler.fire();
 
-    // 编排在不含 native 的 turnRef 下照常收敛，证明核心不依赖 native。
+    // 编排在不含 handle 的 turnRef 下照常收敛，证明核心不依赖 handle。
     expect(session.snapshot().phase.kind).toBe(StreamPhaseKind.TERMINAL);
     expect(session.canAccept()).toBe(true);
   });

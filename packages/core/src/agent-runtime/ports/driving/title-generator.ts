@@ -11,7 +11,7 @@
 // 【本故事（c2-1-6）范围】只给端口签名，不实现 GenerateTitleService（属 epic-c2-2）、不接 SDK、不接 NestJS DI。
 //
 // 【铁律】核心零框架：不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；字段全 readonly。
+// node:child_process；字段全 readonly。
 
 /**
  * TitleGenerationInput —— 标题生成入参（对齐 architecture §4.3）。

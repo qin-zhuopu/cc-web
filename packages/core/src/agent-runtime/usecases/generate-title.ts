@@ -19,7 +19,7 @@
 //   由 C1.SetSessionTitleService 就地降级（保留原标题，C1 FR-2.4）；绝不静默返回空串造假标题。
 //
 // 【铁律 · 核心零框架】本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-//   node:child_process / node:timers / codex / uuid；不直调系统时钟、不生成随机 id。
+//   node:child_process / node:timers / uuid；不直调系统时钟、不生成随机 id。
 //   类型-only import 用 import type + .js 扩展名（verbatimModuleSyntax），值 import 走普通 import + .js。字段全 readonly。
 
 import type { TitleGenerator, TitleGenerationInput } from '../ports/driving/title-generator.js';
@@ -82,18 +82,14 @@ function buildTitlePrompt(recentMessages: TitleGenerationInput['recentMessages']
  * toRuntimeRunKind —— 把 c2-4 resolveRuntimeKind 产出的 domain/runtime/ 处 RuntimeKind 值，
  * 等价映射为 RuntimeRunRequest 所需的 ports/runtime-kind.ts 处 RuntimeKind 值。
  *
- * 两处 enum 同名但为不同类型（既有技术债，本 epic 只复用不动它）；二者字面量值相同
- * （claude-sdk / native / codex），此处按字面量在边界做值层面的等价传递，绝不 as any、绝不合并两个 enum。
- * switch 穷尽三个成员，新增成员时编译期在此报错，逼显式决策（与 start-stream.ts 同名桥接函数纪律一致）。
+ * 两处 enum 同名但为不同类型（既有技术债，本 epic 只复用不动它）；二者字面量值相同（本期 claude-sdk），
+ * 此处按字面量在边界做值层面的等价传递，绝不 as any、绝不合并两个 enum。
+ * switch 穷尽成员，新增成员时编译期在此报错，逼显式决策（与 start-stream.ts 同名桥接函数纪律一致）。
  */
 function toRuntimeRunKind(kind: RuntimeKind): RuntimeRunKind {
   switch (kind) {
     case RuntimeKind.CLAUDE_SDK:
       return RuntimeRunKind.CLAUDE_SDK;
-    case RuntimeKind.NATIVE:
-      return RuntimeRunKind.NATIVE;
-    case RuntimeKind.CODEX:
-      return RuntimeRunKind.CODEX;
     default: {
       const _exhaustive: never = kind;
       return _exhaustive;

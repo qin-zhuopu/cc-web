@@ -3,10 +3,10 @@
 // 对齐 architecture §3.5、§5.1、§7；PRD FR-4.2/4.3、AC-8。
 //
 // 【本故事（c2-3-2）范围】只定义 EventMapper 契约接口 + 未知事件降级语义骨架（纯函数），
-// 不实现三 Runtime 具体 Mapper（ClaudeSdkEventMapper / NativeSseEventMapper / CodexEventMapper 属 c2-6，
-// 位于基础设施层适配器内），不接 SDK / 子进程 / HTTP、不接 NestJS DI。
+// 不实现具体 Runtime Mapper（属 c2-6，位于基础设施层适配器内，本期只有 ClaudeSdkEventMapper），
+// 不接 SDK / 子进程 / HTTP、不接 NestJS DI。
 //
-// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / codex / uuid。
+// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / uuid。
 // 只 import type 引用 c2-1-5 已定义的 AgentStreamEvent（绝不重定义联合成员、不改值对象签名）。
 // 归一目标里唯有 phase_changed 由 C2 核心产出（相位迁移时），【绝不】由 EventMapper 伪造（见 phase-changed-event.ts）。
 
@@ -15,7 +15,7 @@ import type { AgentStreamEvent } from '../../domain/event/agent-stream-event.js'
 /**
  * EventMapper —— 单个 Runtime 的原始事件归一契约（出站侧，由适配器实现）。
  *
- * 职责：把某个外部 Runtime（Claude SDK message / Native SSE 帧 / Codex JSON-RPC 通知）
+ * 职责：把某个外部 Runtime（如 Claude SDK message / 其他 agent 的 SSE 帧 / JSON-RPC 通知）
  * 的**一条**原始事件，归一为内部统一的 AgentStreamEvent，或表示「无归一结果」（返回 null）。
  * 具体各 Runtime 实现属 c2-6，位于 apps/api 适配器层；核心只定义此契约 + 降级语义。
  *

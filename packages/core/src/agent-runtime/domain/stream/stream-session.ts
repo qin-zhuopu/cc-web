@@ -7,7 +7,7 @@
 // 此处先留可编译占位，行为在后续故事补全。
 //
 // 【铁律 · 核心零框架】本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex / uuid；不直调 Date . now() / new Date() / randomUUID——
+// node:child_process / uuid；不直调 Date . now() / new Date() / randomUUID——
 // 取时一律经构造注入的 SK.Clock（now(): epoch 毫秒）。
 //
 // 【边界纪律 NFR-2 / AC-15】phase 是实时内存相位，绝不落库、绝不 import C1 的持久 StreamStatus

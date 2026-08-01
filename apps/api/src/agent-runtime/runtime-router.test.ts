@@ -1,6 +1,6 @@
 // apps/api/src/agent-runtime/runtime-router.test.ts
 // RuntimeRouter 单测（c2-6-6）。用假适配器（spy）断言：CLAUDE_SDK 委派 + 入参透传；
-// 未注册 Runtime（NATIVE/CODEX）fail-fast 归 error 事件（不静默）；availability 反假数据。
+// 未注册 Runtime（将来具名 agent 尚未接适配器）fail-fast 归 error 事件（不静默）；availability 反假数据。
 
 import { describe, it, expect, vi } from 'vitest';
 import type {
@@ -133,20 +133,15 @@ describe('RuntimeRouter —— CLAUDE_SDK 委派', () => {
 });
 
 describe('RuntimeRouter —— 未注册 Runtime fail-fast（NFR-4）', () => {
-  it('NATIVE 未注册 → 产出归一 error 事件（不静默、不卡死）', async () => {
+  it('未注册的 RuntimeKind → 产出归一 error 事件（不静默、不卡死）', async () => {
+    // 模拟"将来新增 RuntimeKind 但适配器尚未注册"的场景（本期枚举只有 CLAUDE_SDK 一个合法成员，
+    // 用非法字面量构造请求以覆盖 fail-fast 路径；真实未注册值由将来新 agent 接入时出现）。
     const { adapter } = makeFakeAdapter();
     const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
-    const events = await collect(router.run(makeRequest('s-4', RuntimeKind.NATIVE)));
+    const events = await collect(router.run(makeRequest('s-4', 'future-agent' as RuntimeKind)));
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('error');
     expect((events[0] as { error: ClassifiedError }).error.code).toBe('UNAVAILABLE');
-  });
-
-  it('CODEX 未注册 → 同样 fail-fast 归 error', async () => {
-    const { adapter } = makeFakeAdapter();
-    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
-    const events = await collect(router.run(makeRequest('s-5', RuntimeKind.CODEX)));
-    expect(events[0]?.type).toBe('error');
   });
 
   it('interrupt 未知 streamId → null（幂等，不抛）', async () => {

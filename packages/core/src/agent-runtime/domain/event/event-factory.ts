@@ -7,7 +7,7 @@
 // 绝不重定义联合成员、不改值对象签名——一律 import type 引用 agent-stream-event.js。
 // 不定义 EventMapper 契约（属 c2-3-2）、不接 SDK（属 c2-6）、不接 NestJS DI。
 //
-// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / codex / uuid。
+// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / uuid。
 // 工厂只组装结构、不含任何 I/O，不调 Date.now / new Date / randomUUID（id/时刻由调用方注入）。
 
 import type { ClassifiedError } from '../../../domain/error/classified-error.js';
