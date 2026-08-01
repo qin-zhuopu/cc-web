@@ -1,0 +1,42 @@
+# Epic SK-3 · 脱敏与运行时日志（Redactor / RuntimeLog）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 依赖链（来自 epics-stories.md，不可乱序）：3-1 → 3-2（依赖 3-1 + SK-2.1 Clock）→ 3-3（依赖 3-1 + 3-2）。
+- id: "sk-3-1"
+  title: Redactor 端口与内建规则契约
+  description: >-
+    定义 Redactor 端口（ports/redactor.ts），签名 redactString(input: string): string
+    与 redact<T>(input: T): T，与 architecture.md §4.3 一致；附内建规则集与脱敏语义契约。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义端口接口与语义契约，不含 RegexRedactor 适配器实现（具体正则规则集在 apps/api 适配器层）。
+    契约须覆盖 API Key/Bearer token/绝对路径用户名段/邮箱/密钥前缀，脱敏后原始敏感值不出现在输出（AC-3），
+    redact 返回新副本且原对象不变（AC-4），占位符 ***REDACTED*** 保留可读结构（FR-3.3）。
+    按 architecture.md §3.4，Redactor 允许随核心包提供纯函数默认实现——忠实反映架构原文，勿擅自扩展或收窄。
+    核心内禁 import 框架/第三方；类型-only import 用 import type + .js 扩展名。
+- id: "sk-3-2"
+  title: RuntimeLog 环形缓冲端口
+  description: >-
+    定义 RuntimeLog 端口（ports/runtime-log.ts，append/snapshot/clear/capacity）与 LogEntry/LogLevel
+    值对象（domain/log/log-entry.ts），与 architecture.md §4.5/§3.4 一致。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    依赖 sk-3-1（Redactor）与 SK-2.1（Clock，ports/clock.ts 已完成）——RuntimeLog 契约的 timestamp
+    来自 Clock.now()、写入经 Redactor，二者均为 SK 内端口，不越界。仅定义端口接口 + LogEntry/LogLevel
+    值对象 + 语义契约，不含 RingBufferRuntimeLog 适配器实现（capacity/clock/redactor 注入在 apps/api）。
+    契约须满足：写 N+K 条仅保留最新 N 条（AC-6）、写入 O(1)（NFR-6）、snapshot 按时间升序、LogEntry 字段全 readonly。
+    核心内禁直调 Date.now()/new Date()；runtime-log.ts 引用 LogEntry/LogLevel 用 import type + .js 扩展名。
+- id: "sk-3-3"
+  title: RuntimeLog 写入自动脱敏
+  description: >-
+    在 RuntimeLog 端口契约上明确 append 写入的 message/meta 默认经 Redactor 脱敏、无绕过路径，
+    使 snapshot() 导出不含敏感值。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    依赖 sk-3-1（Redactor）与 sk-3-2（RuntimeLog 端口 + LogEntry）。此故事收敛写入路径的脱敏语义契约：
+    append 的 message/meta 写入前自动经 Redactor 脱敏（架构 §4.5 注释、FR-5.3），写入含敏感值消息后
+    snapshot() 中敏感值已脱敏（AC-7，反例断言），端口不暴露任何绕过 Redactor 的写入路径（NFR-4）。
+    脱敏发生在 RingBufferRuntimeLog 适配器注入的 Redactor 上，本故事只固化端口契约约束，不实现适配器落地代码。
+    类型-only import 用 import type + .js 扩展名。

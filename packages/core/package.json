@@ -1,0 +1,19 @@
+{
+  "name": "@codepilot/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodePilot 核心包（Shared Kernel）—— 零框架依赖的领域类型与端口契约",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --build"
+  },
+  "license": "BUSL-1.1"
+}

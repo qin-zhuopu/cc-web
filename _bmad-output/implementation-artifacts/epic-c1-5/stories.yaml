@@ -1,0 +1,82 @@
+# Epic C1-5 · 消息生命周期用例（append+touch / updateStreamStatus / getHistory / getPromptView / tokenUsage 只存不算）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 排序：append+touch（写地基）→ updateStreamStatus（推进守卫）→ getHistory（有序投影）→ getPromptView（剥离 render-only）→ tokenUsage 只存不算（反假数据）。
+- id: "c1-5-1"
+  title: 实现 AppendMessageService.append 追加消息并同一 now touch 会话
+  description: >-
+    在 usecases/append-message.ts 落地 AppendMessageService implements AppendMessageUseCase 的
+    append（id←IdGenerator、createdAt←Clock，同一 now 原子 touch 会话 updatedAt）。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——append 用 IdGenerator/Clock 且同一 now 原子 touch 会话：append(input) 用
+    id←IdGenerator.next()、now←Clock.now()（message.createdAt=now）构造 Message，随后
+    MessageRepository.append(message) → SessionRepository.touch(input.sessionId, now)，touch 必须用
+    【同一个】now 取值（严禁对 touch 再取一次 Clock.now()），保证消息 createdAt 与会话 updatedAt 一致
+    （对齐 architecture §6 AppendMessageService.append、FR-4.1/NFR-7/AC-7）。streamStatus 缺省对 user 恒
+    'completed'、assistant 首次流式透传 input.streamStatus；isHeartbeatAck 缺省 false；tokenUsage/taskRunId
+    无值保持 undefined，不预填假 0/假空串。无事务的取舍——核心层用「同一 now + 先 append 后 touch 两步」表达
+    一致性，真正事务原子由 SQLite 适配器（c1-6）兜底。service 经构造函数注入 MessageRepository、
+    SessionRepository、Clock、IdGenerator（可再注 RuntimeLog，source='c1.message'），依赖倒置，核心不 new
+    具体实现、不直调 Date.now()/randomUUID()（对齐 architecture §7）。测试用内存 FakeMessageRepository
+    （Map<SessionId, Message[]>）+ FakeSessionRepository（Map）+ FrozenClock（固定时刻）+ SequentialIdGenerator
+    （序列）假替身，断言 message.id/createdAt 来自注入端口、SessionRepository.touch 以同一 now 被调用，纯逻辑
+    单测无需真实 DB。类型-only import 用 import type + .js 扩展名；不实现 updateStreamStatus（属 c1-5-2）。
+- id: "c1-5-2"
+  title: 实现 updateStreamStatus 经 canTransition 守卫推进
+  description: >-
+    在 AppendMessageService 实现 updateStreamStatus(messageId, status, tokenUsage?)：经 canTransition
+    守卫，合法推进（streaming→终态）落库、非法回退（终态迁出）拒绝且不写库。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——streamStatus 推进必经 canTransition、非法推进拒绝：updateStreamStatus 先读回消息现有
+    streamStatus，用 domain/message/stream-status.ts 的 canTransition(from, to) 判定——合法（streaming→
+    completed/interrupted/error 或 streaming→streaming 幂等）则委托 MessageRepository.updateStreamStatus
+    (id, status, tokenUsage)；非法（任一终态迁出）拒绝、不写库（拒绝方式——抛错或 no-op——在实现中固定并单测）。
+    覆盖判定必须复用 canTransition，不得在用例重写迁移规则（对齐 architecture §4.3/§5.2、FR-4.2/4.3/AC-8）。
+    tokenUsage 收尾时可选透传，缺省则不更新用量、不落假 0。C1 只记持久生命周期，绝不引用/建模 C2 实时流式相位
+    phase（NFR-2）。测试用内存 FakeMessageRepository 假替身断言合法推进落库、非法推进被拒且未写库。
+    类型-only import 用 import type + .js 扩展名；canTransition 为运行时函数（值 import）。
+- id: "c1-5-3"
+  title: 实现 GetSessionHistoryService.getHistory 有序投影加分页
+  description: >-
+    在 usecases/get-session-history.ts 落地 GetSessionHistoryService implements GetSessionHistoryUseCase
+    的 getHistory(query)：按 createdAt/rowid 升序返回完整消息投影，透传 limit/beforeRowId 分页。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——getHistory 按 createdAt/rowid 升序 + 分页透传：getHistory(query) 透传 HistoryQuery
+    （sessionId/limit?/beforeRowId?）委托 MessageRepository.listBySession(query)，返回按 createdAt/rowid
+    升序的完整 Message 投影（对齐 architecture §4.4/§5.2 listBySession、FR-4.4/AC-9 基础）。beforeRowId 分页
+    游标语义由适配器以 rowid 提供，用例只透传、测试用假实现模拟。service 经构造函数注入 MessageRepository
+    （对齐 architecture §7 GetSessionHistoryService(MessageRepository)），依赖倒置，核心不 new 具体实现。
+    测试用内存 FakeMessageRepository（Map<SessionId, Message[]>）假替身注入乱序/多条消息，断言返回顺序升序、
+    limit/beforeRowId 分页参数被透传，纯逻辑单测无需真实 DB。类型-only import 用 import type + .js 扩展名；
+    getPromptView 的 render-only 剥离属 c1-5-4。
+- id: "c1-5-4"
+  title: 实现 getPromptView 剥离 render-only 字段
+  description: >-
+    在 GetSessionHistoryService 实现 getPromptView(query)：剔除 isHeartbeatAck / taskRunId 关联的
+    render-only 消息，只留真正进入模型上下文的消息；与 getHistory 对含标记消息返回不同。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——getPromptView 必须剥离 render-only 字段：getPromptView(query) 取
+    MessageRepository.listBySession(query) 的有序投影后，过滤掉 render-only 标记消息——isHeartbeatAck===true
+    的心跳应答消息、以及 taskRunId 关联的 render-only join marker 消息（不入模型上下文），只保留真正进入 prompt
+    的消息（对齐 architecture §4.4/§6「过滤 isHeartbeatAck 与 taskRunId 关联的 render-only 消息」、FR-4.6）。
+    反例 smoke——getHistory 与 getPromptView 对含 taskRunId/isHeartbeatAck 的消息【返回不同】（AC-9）。测试用
+    内存 FakeMessageRepository 假替身注入含 render-only 标记的消息，断言两种投影内容不同、prompt 视图已剥离这些
+    消息。类型-only import 用 import type + .js 扩展名；tokenUsage 只存不算属 c1-5-5。
+- id: "c1-5-5"
+  title: 确认 tokenUsage 只存不算不落假 0
+  description: >-
+    从代码/测试层面确认 append/updateStreamStatus 对 tokenUsage 只透传存储：无值保持 undefined、不补假 0，
+    有值原样保真。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    关键硬约束——tokenUsage 只存不算、无值 undefined 不落假 0：append/updateStreamStatus 对 tokenUsage 只做
+    透传——有值则原样落 MessageRepository、无值则保持 undefined 不写、不补 0，C1 绝不计算 token（C1 只存 C2 落库
+    提供的投影不生成，对齐 architecture §3.3 投影字段纪律、§6「token 用量只存不算」、FR-4.5）。反假数据断言——
+    无 tokenUsage 的消息经 getHistory 读回后该字段为空/undefined、断言输出不出现 0（AC-10）；带 tokenUsage 的
+    消息原样保真。测试用内存 FakeMessageRepository 假替身断言：追加不带 tokenUsage 的消息读回 tokenUsage===
+    undefined（不显 0）、带 tokenUsage 的消息保真。类型-only import 用 import type + .js 扩展名。

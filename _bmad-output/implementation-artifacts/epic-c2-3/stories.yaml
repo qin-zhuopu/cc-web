@@ -1,0 +1,52 @@
+# Epic C2-3 · EventMapper 契约 + 事件构造编解码 + result token 投影 + phase_changed 核心产出 —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：14 类事件构造/判别工具（归一目标可用面）→ EventMapper 契约+未知降级不崩 → result token 投影不填 0 → phase_changed 核心产出。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 只落 EventMapper 契约与纯函数/事件构造编解码，复用 c2-1 类型与 c2-2 聚合根；
+# 不实现具体 Runtime mapper（属 c2-6）、不接 SDK/进程/HTTP、不实现 StartStream/AbortStream 用例（c2-4/c2-5）、不接 NestJS DI。
+- id: "c2-3-1"
+  title: 落地 14 类事件构造/判别编解码（归一目标可用面）
+  description: >-
+    为 c2-1 已定义的 14 类 AgentStreamEvent 补齐「值对象编解码」——构造工厂与判别 type guard，
+    使 mapper 侧能以结构稳定、跨 Runtime 一致的方式产出归一事件、聚合根侧安全判别。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    真实职责勿重复 c2-1：c2-1 已在 domain/event/agent-stream-event.ts 声明 14 类联合与全部值对象；本故事
+    只补构造/判别工具（工厂 + type guard），一律 import type 引用 c2-1 的联合与值对象，绝不重新声明联合成员、
+    不改值对象接口签名。判别函数与联合 type 判别键一致；单测断言构造结构与 c2-1 类型契约一致、跨 Runtime 归一
+    目标结构统一（AC-7）。纯类型/纯函数、核心零框架、不接 SDK；import type + .js（NodeNext），如需 Clock 经注入不直调 Date.now。
+- id: "c2-3-2"
+  title: 定义 EventMapper 契约与未知原生事件降级不崩
+  description: >-
+    定义「Runtime 原生事件 → AgentStreamEvent（或无归一结果）」的 EventMapper 端口/纯函数签名（可含纯函数骨架），
+    并把未识别原生事件落成明确降级规则：丢弃或包 raw、一律不抛。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    本故事是 EventMapper 契约本身：只定义映射函数/端口签名 + 未知事件降级规约，绝不 import 或调用任何 Runtime
+    SDK/协议客户端（具体 mapper=ClaudeSDK/Native/Codex 属 c2-6，不在本 epic）。未知原生事件降级硬约束（AC-8）：
+    不抛异常、不伪造已识别事件内容、不静默改变已识别事件语义——核心侧安全路径为「返回无归一结果（跳过/丢弃）」。
+    当前 c2-1 联合无 raw/unknown 载体，若判定需新增须走 correct-course，勿擅自扩联合。单测用未识别原生事件样本断言
+    不崩、不污染并发合法事件归一。纯类型/纯函数、核心零框架、不接 SDK；import type + .js。
+- id: "c2-3-3"
+  title: result 事件 token 投影（无上报留空不填 0）
+  description: >-
+    明确 result 事件 tokenUsage 投影的构造/归一契约：仅 Runtime 真实上报时携带 TokenUsage，未上报整体省略，
+    经 c2-2 的 apply 后 snapshot.tokenUsage 仍为空。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    AC-9 反假数据硬约束：无 tokenUsage 上报时 result 事件该字段为 undefined（省略），绝不填 0、不估算、不在核心侧
+    计算 totalTokens；有上报时各计数字段如实透传。单测断言：无上报→result.tokenUsage===undefined、经 c2-2 apply 后
+    snapshot().tokenUsage 仍为空、落库/UI 留空而非假 0；context_usage 同理无上报不发事件。复用 c2-2 已实现的 apply
+    投影，不重写；构造工具与 c2-3-1 一致。纯函数、核心零框架、不接 SDK；import type + .js。
+- id: "c2-3-4"
+  title: phase_changed 事件由 C2 核心产出
+  description: >-
+    明确 phase_changed 的产出方是 C2 核心相位迁移（不来自 Runtime、不经 EventMapper），提供把迁移后 StreamPhase
+    包装成 phase_changed 事件的构造契约/纯函数，供 c2-4/c2-5 编排使用。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    phase_changed 核心产出硬约束：只由 C2 核心相位迁移产出（输入是 StreamPhase 而非任何原生事件），EventMapper 契约
+    的归一集合仅覆盖 text…file_changed（13 类），绝不产出 phase_changed。单测断言其来源为核心、EventMapper 不产出该类型。
+    携带的 StreamPhase 是实时内存态、不落库、不 import/建模 C1 StreamStatus 做实时判断（NFR-2/AC-15）。不实现相位迁移
+    的编排调用（属 c2-4/c2-5），本故事只落构造契约。纯函数、核心零框架、不接 SDK；import type + .js。

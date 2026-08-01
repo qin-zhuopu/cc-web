@@ -1,0 +1,92 @@
+# Epic C2-1 · AgentRuntime 领域与端口骨架（类型 / 枚举 / 纯函数判定 / 端口接口）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：枚举/相位类型 → 纯函数迁移判定 → 归因/产物值对象 → 事件联合 → 端口骨架 → 守卫 → 消息键。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 只定义类型/枚举/纯函数判定/端口骨架，不实现 StreamSession 聚合根行为（属 epic-c2-2）。
+- id: "c2-1-1"
+  title: 定义 StreamPhase 与终态子状态
+  description: >-
+    定义 StreamPhaseKind（active/settling/terminal）、TerminalSubstate（completed/aborted/errored）、
+    判别联合 StreamPhase 与 isActive/isTerminal 判定，及 StreamSessionId 值对象（domain/stream/）。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义相位类型与判定函数签名，不实现 StreamSession 聚合根行为（迁移方法属 epic-c2-2）。
+    phase 是实时内存态，绝不落库、绝不与 C1 持久 StreamStatus 混用（架构铁律 NFR-2/AC-15），
+    类型层不 import C1 StreamStatus。类型-only import 用 import type + .js 扩展名；核心零框架。
+- id: "c2-1-2"
+  title: 定义 canTransitionPhase 与 reconcilePhase
+  description: >-
+    定义纯函数 canTransitionPhase(from,to)（active→settling/active→terminal/settling→terminal 合法，
+    任意 terminal→* 与 *→active 回退非法）与 reconcilePhase(runtimeStatus,current)（running/未知→null）。
+    详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    这是 phase 状态机不变量的纯函数判定层，必须无副作用、覆盖合法/非法迁移全矩阵（AC-1）。
+    canTransitionPhase 是唯一合法迁移判据（聚合根迁移方法将在 epic-c2-2 复用它，本故事不实现聚合根）；
+    reconcilePhase 对 running/unknown 返回 null（force-abort 网兜底），idle/interrupted/error 返回 terminal 子态。
+    引用 StreamPhase 用 import type + .js；核心零框架、禁直调 Date.now/randomUUID。
+- id: "c2-1-3"
+  title: 定义 TerminalReason 与错误映射
+  description: >-
+    定义 TerminalReasonCode（6 类归因码 completed/user_aborted/idle_timeout/tool_timeout/runtime_error/
+    process_died）与含 classified: ClassifiedError 的 TerminalReason，及到 SK.ErrorClassifier 的映射约定。
+    详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    映射约定须让归类可区分：user_aborted→ABORTED、idle_timeout→TIMEOUT、tool_timeout→PROCESS/TIMEOUT、
+    process_died→PROCESS（AC-5，ABORTED 不显示成出错了）。ClassifiedError 经 import type 引用 SK，不重定义。
+    只定义值对象与映射约定，不实现 abort 用例路径（属 epic-c2-2）；import type + .js；核心零框架。
+- id: "c2-1-4"
+  title: 定义 TurnArtifacts 与 buildFinalContent
+  description: >-
+    定义只读 TurnArtifacts 值对象（text/thinking/toolUses/toolResults）与纯函数 buildFinalContent(artifacts):
+    string|null（纯文本→text，含 thinking/tool→blocks[]，孤儿 tool_result 保留，全空→null）。
+    详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    buildFinalContent 是无副作用纯函数，须覆盖五路投影 + 空回合返回 null（FR-2.6，空回合不落库）。
+    只定义值对象与投影纯函数，不实现聚合根 apply 累积逻辑（属 epic-c2-2）。引用 ToolUseInfo/ToolResultInfo
+    用 import type + .js（可能依赖 c2-1-5 的值对象，注意声明顺序）；核心零框架。
+- id: "c2-1-5"
+  title: 定义 AgentStreamEvent 联合
+  description: >-
+    定义 14 类 AgentStreamEvent 判别联合与 ToolUseInfo/ToolResultInfo/TokenUsage/ContextUsage 值对象
+    （domain/event/），result 事件 tokenUsage 可空，phase_changed 标注为 C2 核心产出。
+    详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    事件类型须完整覆盖 architecture.md §3.5 的 14 类；usage 只存 Runtime 上报投影，无上报留空、不填 0（AC-9）。
+    只定义事件联合与值对象，不定义 EventMapper 契约与降级规则（属 epic-c2-3）、不接 SDK（属 epic-c2-6）。
+    引用 StreamPhase/ClassifiedError 用 import type + .js；核心零框架。
+- id: "c2-1-6"
+  title: 定义 RuntimeKind 与端口
+  description: >-
+    定义 RuntimeKind/RuntimeAvailability，驱动端口（StartStream/AbortStream/TitleGenerator）与出站端口
+    AgentRuntimePort 接口签名，import type 引用 C1 用例端口与 C7 ProviderRepository，index.ts 只导出端口与领域类型。
+    详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    只给端口接口签名，不实现用例（StartStreamService/AbortStreamService/registry 属 epic-c2-2）、不接 NestJS DI/forwardRef。
+    conversation-ports.ts/provider-read-port.ts 仅 import type 转出 C1/C7 端口类型（核心只单向 import type，
+    C1↔C2 环在接线层解，本 epic 不碰）；index.ts 只导出端口与领域类型。import type + .js；核心零框架。
+- id: "c2-1-7"
+  title: import 守卫
+  description: >-
+    建立禁用 import 静态扫描，保证 agent-runtime/ 核心包对框架/SDK/DB/子进程/非确定性 API 0 命中。
+    详见 SPEC.md 的 CAP-7。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    守卫必须覆盖 packages/core/agent-runtime/ 全目录，对 @anthropic-ai/*、better-sqlite3、@nestjs/*、
+    child_process/node:child_process、Date.now、randomUUID 0 命中（AC-14），且可在 npm run test 层执行。
+    可参照 SK epic 已有守卫范式；扫描器本身可用 Node，被扫描的核心包保持零框架。
+- id: "c2-1-8"
+  title: 定义 C2 消息键
+  description: >-
+    定义 C2 自身 i18n 键集合（c2.*，覆盖状态/错误/中断提示，domain/message-keys.ts），用户可见文案经 key +
+    SK.TranslationPort，错误 key 复用 SK.ErrorClassifier.messageKey。详见 SPEC.md 的 CAP-8。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    只贡献 c2.* 键，不重定义 SK 错误文案（错误 key 来自 SK.ErrorClassifier.messageKey，经 import type 引用）。
+    不实现渲染/翻译逻辑（渲染交 SK.TranslationPort）。import type + .js；核心零框架。

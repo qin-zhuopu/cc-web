@@ -1,0 +1,55 @@
+# Epic C2-6 · ClaudeSdkRuntimeAdapter + ClaudeSdkEventMapper + RuntimeRouter —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：EventMapper 归一（可纯表驱动测）→ RuntimeAdapter 封装 Query 句柄（依赖 mapper）→ RuntimeRouter 路由（依赖 adapter）。
+# 无 status 字段（进度追踪走 sprint-status.yaml）。
+# 本 epic 全部产物在 apps/api（框架层，可 import @anthropic-ai/*），核心包 packages/core 仍零框架、绝不被污染。
+# 本期只实现 c2-6-1（适配器+mapper）与 c2-6-6（router）；c2-6-2~5/6-7（Native/Codex/故障隔离）deferred，接口与路由位保留。
+# 【环境前提】litellm 网关 https://litellm.jereh.cn 的 Anthropic 原生 /v1/messages 已验证连通（HTTP 200，x-api-key+anthropic-version）；
+# 模型别名 Jereh-Kimi-K2.6→Kimi-K2.6（会返回思维链 reasoning_content/thinking，需归一到 thinking 事件）。配置单一真相源 apps/api/.env（gitignored，token 绝不入库/回显）。
+# 【测试策略】三故事全用录制样本 + mock query() 做纯单元/表驱动测（进 npm run test 门禁，无真实网络）；连真代理的集成验证单独人在场跑，不进默认门禁。
+- id: "c2-6-1a"
+  title: 实现 ClaudeSdkEventMapper（SDK message → AgentStreamEvent 归一，含 Kimi thinking）
+  description: >-
+    实现核心 EventMapper 契约的 Claude 侧具体归一：@anthropic-ai/claude-agent-sdk 的流式 message
+    逐条映射为核心 14 类 AgentStreamEvent；Kimi 思维链（reasoning_content/thinking block）→ thinking 事件、正文 → text 事件；
+    result usage 只投影上报值（AC-9）；未知 message → null 降级（AC-8）。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    先读 architecture §7.1、§3.5（14 类 AgentStreamEvent 语义）、_bmad-output/implementation-artifacts/epic-c2-6/SPEC.md CAP-1、
+    packages/core 里 event-mapper 契约（ports/driven/event-mapper.ts）、agent-stream-event.ts（14 类联合+值对象）、event-factory.ts（构造工厂）、result-projection.ts（token 投影）。
+    新建 apps/api/src/agent-runtime/adapters/claude-sdk-event-mapper.ts：class ClaudeSdkEventMapper implements 核心 EventMapper（import type 核心契约与类型；值 import 构造工厂/type guard/投影纯函数复用，绝不重写归一规则/不重定义 14 类）。
+    映射：文本增量→text（注意核心 text 语义是「累积后全文」见 c2-2 apply，按 SDK 事件语义正确产出）、思维链 delta→thinking、tool_use→tool_use、tool_result→tool_result、终止+usage→result（tokenUsage 经 result-projection 只投影上报值、无则省略绝不填 0，AC-9）、权限请求→permission_request。
+    Kimi 特性：litellm 路由的 Kimi-K2.6 会带 reasoning_content（OpenAI 风格）或 thinking block（Anthropic 风格）——都归一到 thinking 事件；正文归 text。未识别 message → 返回 null（复用 c2-3 降级契约，绝不抛/不伪造已识别事件/不改语义）。
+    新建 claude-sdk-event-mapper.test.ts：表驱动，用录制的 SDK message 样本（内联常量，无真实网络）断言各类 message 归一结构正确、Kimi thinking→thinking + 正文→text、result usage 有上报才带/无则省略、未知→null。
+    边界：本文件在 apps/api 可 import @anthropic-ai/*（仅取其 message 类型）；绝不把 SDK import 加进 packages/core。verbatimModuleSyntax：import type + .js。术语中文，vitest 同目录 *.test.ts。不改 packages/core、不建 AgentRuntimeModule（属 c2-7）。不跑 npm run test（合并阶段统一跑）。报告改/建文件。
+- id: "c2-6-1b"
+  title: 实现 ClaudeSdkRuntimeAdapter（封装 Query 句柄 + run/interrupt/forceKillTurn + late-unregister no-op）
+  description: >-
+    实现 AgentRuntimePort：run 调 query()（注入 .env 到 options.env、接 abortSignal）以 streamId 注册 Query 句柄、产出经 ClaudeSdkEventMapper 归一的 AgentStreamEvent 流；
+    interrupt 组合 abort application-owned signal + Query.interrupt() 返回权威状态并注销句柄；forceKillTurn 强制关句柄；late-unregister（旧 streamId）no-op。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7.1、SPEC CAP-2、packages/core 的 agent-runtime-port.ts（AgentRuntimePort/RuntimeRunRequest/TurnRef/AbortSignalLike/RuntimeRunOptions）。依赖 c2-6-1a 的 ClaudeSdkEventMapper。
+    新建 apps/api/src/agent-runtime/adapters/claude-sdk-runtime-adapter.ts：class ClaudeSdkRuntimeAdapter implements AgentRuntimePort（import type 核心端口）。构造注入 ClaudeSdkEventMapper + 读 .env 的配置源 + SK.ErrorClassifier（SDK 抛错归一）。
+    - run(request): 把 promptView/content 转成 SDK query() 输入；把 apps/api/.env 的 ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN/各 *_MODEL=Jereh-Kimi-K2.6/CLAUDE_CODE_* 注入 query() 的 options.env（token 绝不写日志/回显）；把 request.abortSignal 接到 SDK 的 abort 机制；以 streamId 注册返回的 Query 句柄进内部 Map registry；产出 async generator：把 SDK message 逐条过 ClaudeSdkEventMapper.mapEvent → 非 null 才 yield（已归一 AgentStreamEvent）。SDK 迭代抛错经 ErrorClassifier 归一成 error 事件/抛出（不静默、不停在 active）。
+    - interrupt(turnRef): 先 abort application-owned signal（run 时持有的 AbortController）再 Query.interrupt()，返回 Runtime 权威状态字符串（idle/interrupted/error/running，供核心 reconcilePhase；SDK 无明确状态时返回 null）；关闭并注销该 streamId 句柄。
+    - forceKillTurn(turnRef): 强制关句柄兜底（同步、不抛）。
+    - 【late-unregister no-op，AC-6】注销/teardown 校验 streamId 归属：Map 里该 streamId 对应的句柄若已是新 turn 的（或旧 streamId 已不在），旧 turn teardown 传过期 streamId 时 no-op，绝不 evict 新 turn 句柄。
+    - availability(): 非 spawn 探测（探配置/端点可达，不发起真实回合），返回 RuntimeAvailability（反假数据：探测不了标 unknown/unavailable+reason，不显假 ready）。
+    新建 claude-sdk-runtime-adapter.test.ts：用 mock query()（返回可控假 message 序列的 async iterable）+ 假 Query 句柄（spy interrupt），不打真网络。断言：run 注册句柄+产出归一事件流（经真实 mapper 或 spy mapper）；interrupt 调 abort+Query.interrupt+返回权威状态+注销句柄；forceKillTurn 关句柄；late-unregister 旧 streamId no-op、不影响新 turn 句柄（AC-6）；options.env 被注入正确配置（断言 query() 收到的 env 含 ANTHROPIC_BASE_URL 等）。
+    边界：apps/api 可 import @anthropic-ai/claude-agent-sdk；把它 pin 版本加进 apps/api/package.json dependencies（确切版本）。绝不污染 packages/core。import type + .js；术语中文。不建 AgentRuntimeModule（c2-7）。不跑 npm run test。报告改/建文件 + 装的 SDK 版本。
+- id: "c2-6-6"
+  title: 实现 RuntimeRouter（按 RuntimeKind 路由 + availability 非 spawn 探测）
+  description: >-
+    实现 AgentRuntimePort：内部持 RuntimeKind→适配器映射，run/interrupt/forceKillTurn 按 runtimeKind 委派；
+    本期只注册 CLAUDE_SDK→ClaudeSdkRuntimeAdapter，NATIVE/CODEX 未注册→fail-fast 归 ClassifiedError（不静默/不卡死）；availability 聚合已注册 Runtime。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 SPEC CAP-3、architecture §7/§8、packages/core 的 agent-runtime-port.ts、runtime-kind.ts（RuntimeKind/RuntimeAvailability）。依赖 c2-6-1b 的 ClaudeSdkRuntimeAdapter。
+    新建 apps/api/src/agent-runtime/runtime-router.ts：class RuntimeRouter implements AgentRuntimePort。构造注入已注册适配器映射（本期 { [RuntimeKind.CLAUDE_SDK]: claudeSdkAdapter }）+ SK.ErrorClassifier。
+    - run(request)/interrupt(turnRef)/forceKillTurn(turnRef)：按 request.runtimeKind / turnRef 关联的 runtimeKind 查映射委派到对应适配器。turnRef 只含 streamId 时，router 需能定位其 runtimeKind（内部记 streamId→runtimeKind 映射，或委派策略以文档为准；读架构确认，勿臆造）。
+    - 未注册 Runtime（NATIVE/CODEX）：fail-fast——经 ErrorClassifier 归 ClassifiedError（如 UNAVAILABLE/相应 code），run 以归一 error 事件暴露或抛出、interrupt/forceKillTurn 抛/归错，绝不静默返回空、绝不卡死核心（NFR-4）。
+    - availability(): 聚合已注册适配器的 availability 投影；未注册的 RuntimeKind 标 unavailable/unknown（反假数据，不显假 ready）。非 spawn。
+    新建 runtime-router.test.ts：用假适配器（spy run/interrupt/forceKillTurn/availability）断言：CLAUDE_SDK 请求委派到对应适配器且入参透传；NATIVE/CODEX 请求 fail-fast 归 ClassifiedError（不静默）；availability 返回已注册 Runtime 可用性 + 未注册标 unavailable/unknown。
+    边界：apps/api 层；import type 核心端口 + 值 import RuntimeKind 枚举；绝不污染 packages/core。import type + .js；术语中文。不建 AgentRuntimeModule（c2-7）。不跑 npm run test。报告改/建文件。

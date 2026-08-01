@@ -1,0 +1,36 @@
+# Epic SK-2 · 确定性基础端口（Clock / IdGenerator / Platform）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+- id: "sk-2-1"
+  title: Clock 端口
+  description: >-
+    定义 Clock 端口（ports/clock.ts），签名 now(): number 返回 epoch 毫秒，
+    与 architecture.md §4.6 一致；附生产（SystemClock）与测试（冻结时钟）语义契约。
+    详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义端口接口与语义契约，不含 SystemClock 适配器实现。冻结时钟两次取值相同（AC-8）
+    是端口须满足的测试语义，冻结/可推进时钟属测试替身不是本故事的核心包产物。
+    核心内禁直调 Date.now()/new Date()；类型-only import 用 import type + .js 扩展名。
+- id: "sk-2-2"
+  title: IdGenerator 端口
+  description: >-
+    定义 IdGenerator 端口（ports/id-generator.ts），签名 next(): string，
+    与 architecture.md §4.7 一致；附生产（UuidGenerator）与测试（确定性序列）语义契约。
+    详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义端口接口与语义契约，不含 UuidGenerator 适配器实现。注入确定性序列后连续生成
+    与预期一致（AC-9）是端口须满足的测试语义，SequentialIdGenerator 属测试替身不是本故事产物。
+    核心内禁直调 uuid/随机库；类型-only import 用 import type + .js 扩展名。
+- id: "sk-2-3"
+  title: Platform 端口
+  description: >-
+    定义 Platform 端口（ports/platform.ts），PlatformInfo 含只读 os/arch/runtime，
+    及 OsType/ArchType 类型别名，与 architecture.md §4.2 一致。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义端口接口与语义契约，不含 NodePlatform 适配器实现（读 process.platform/arch 在适配器层）。
+    PlatformInfo 字段全部 readonly，返回值进程内稳定且与运行环境一致（AC-11）。
+    跨文件引用 PlatformInfo/OsType 时类型-only import 用 import type + .js 扩展名。

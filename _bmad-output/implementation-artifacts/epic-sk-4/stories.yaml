@@ -1,0 +1,42 @@
+# Epic SK-4 · i18n 端口、DI 接线与守卫 —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 注：Story 4.4「试点 C7 消费 ErrorClassifier 验证」在 sprint-status.yaml 标记 deferred，本期不做，故不列入。
+- id: "sk-4-1"
+  title: TranslationPort 端口
+  description: >-
+    定义 TranslationPort 端口（ports/translation-port.ts），签名 translate(key, locale, params?)
+    与 has(key, locale) 并导出 Locale 类型别名，与 architecture.md §4.4 一致；
+    附「缺失键返回键名、不抛、不空串」语义契约。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    仅定义端口接口与语义契约，不含 JsonTranslationTable 适配器实现，不内置任何 locale 文案表。
+    缺失键返回 key 本身、不抛异常、不返回空串（AC-5、FR-4.3）是端口须满足的语义；
+    支持插值参数（FR-4.1）；SK 只贡献 SK_MESSAGE_KEYS，文案表由适配器提供（FR-4.2）。
+    核心包零框架依赖；类型-only import（如 Locale）用 import type + .js 扩展名。
+- id: "sk-4-2"
+  title: SharedKernelModule 依赖注入接线
+  description: >-
+    在 apps/api 装配 SharedKernelModule，把 7 个端口 token 绑定到适配器实现并 exports，
+    绑定清单与 architecture.md §5 一致，供其余上下文 imports 后注入。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    SharedKernelModule 位于 apps/api 适配器层（这是 SK 唯一带框架的部分），providers 绑定并 exports
+    全部 7 个端口 token：ErrorClassifier/Platform/Redactor/TranslationPort/RuntimeLog/Clock/IdGenerator，
+    清单以 architecture.md §5 为准；RuntimeLog 适配器构造依赖同模块内 Clock 与 Redactor token。
+    依赖 sk-4-1 的 TranslationPort 及 SK-1/2/3 的其余 6 个端口全部就位。
+    核心包 packages/core 内不得出现任何 @nestjs/* import，框架绑定只在 apps/api（AC-10）。
+- id: "sk-4-3"
+  title: 禁用 import 静态检查守卫（补强与验收对齐）
+  description: >-
+    确认 packages/core 的禁用 import / 禁用运行时 API 静态守卫满足 AC-10/NFR-1，
+    并在发现缺口时补强。守卫已于 SK-1 提前落地，本故事做补强与验收对齐而非从零实现。
+    详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    守卫已存在于 scripts/check-core-imports.mjs（零依赖 Node 脚本，已接入 package.json 的 test/lint
+    脚本，并配套 scripts/check-core-imports.test.ts 回归）。本故事不从零重写，做补强与 AC-10 对齐：
+    确认扫描根覆盖 packages/core、禁用清单（@nestjs/*、better-sqlite3、@anthropic-ai/*、uuid 及
+    Date.now(/randomUUID）与 architecture.md 铁律一致、空扫描仍视为失败、已纳入 npm run test 门禁；
+    若发现缺口（如新增端口目录未覆盖）则补齐。依赖 sk-4-2（接线完成后守卫覆盖面才最终确定）。

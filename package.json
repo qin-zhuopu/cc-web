@@ -1,0 +1,23 @@
+{
+  "name": "codepilot-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CodePilot Web — 本机运行的多模型 AI Agent Web 应用（NestJS + Vite React，六边形架构）",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --build",
+    "check-core-imports": "node scripts/check-core-imports.mjs",
+    "lint": "npm run typecheck && npm run check-core-imports",
+    "test": "npm run typecheck && npm run check-core-imports && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "license": "BUSL-1.1"
+}

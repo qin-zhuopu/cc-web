@@ -1,0 +1,63 @@
+# Epic C2-2 · StreamSession 聚合根 + phase 不变量 + #578 abort 反例回归 —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：聚合根壳+snapshot → 四迁移方法幂等 → #578 abort 反例回归 → canAccept 门 → apply 事件累积。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 只实现 StreamSession 聚合根本身与其不变量，复用 epic-c2-1 的纯函数做唯一判据；
+# 不实现 StartStream/AbortStream 用例编排（属 c2-4/c2-5）、不接 EventMapper（c2-3）、不接 SDK/DI（c2-6+）。
+- id: "c2-2-1"
+  title: 实现 StreamSession 聚合根壳与 snapshot
+  description: >-
+    实现 StreamSession 可变聚合根（构造 phase=active、持有 id/sessionId/runtimeKind/artifacts/时间戳）
+    与只读 snapshot()，phase 只能经领域方法迁移。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    聚合根复用 epic-c2-1 的 canTransitionPhase 作为唯一迁移判据，不重写迁移规则；phase 不允许外部直接赋值，
+    非法迁移抛 InvalidPhaseTransition。取时一律经构造注入的 SK.Clock，不直调 Date.now/new Date；
+    phase 是实时内存态、绝不落库、不 import/建模 C1 StreamStatus（NFR-2/AC-15）。
+    引用 c2-1 类型与 SK.ClassifiedError/Clock/IdGenerator 用 import type + .js；核心零框架。
+    单测/替身用假 Clock；不实现 StartStream/AbortStream 用例（属 c2-4/c2-5）。
+- id: "c2-2-2"
+  title: 实现四迁移方法幂等
+  description: >-
+    实现 markSettling/complete/abort/fail 四个迁移方法（各内部先 canTransitionPhase 校验，终态记录
+    settledAt/error/terminalReason/tokenUsage），已 terminal 时 no-op 幂等。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    四方法签名以 architecture.md §3.2 为准，一律经 c2-1 的 canTransitionPhase 判定合法性，不重写规则；
+    幂等硬约束：已 terminal 调用任一方法为 no-op（不回退、不二次翻）。abort 归 ABORTED、complete 记录
+    tokenUsage 投影（无值不填 0，AC-9）、fail 记录分类错误。单测覆盖合法迁移矩阵 + 幂等断言（AC-1）。
+    import type + .js；取时经注入 Clock；假 Clock 替身；核心零框架。
+- id: "c2-2-3"
+  title: 实现 abort 不变量与 #578 反例回归
+  description: >-
+    把 abort 不变量落成聚合根保证（任意 abort 路径后 phase ∈ terminal 子态、绝不停 active），
+    并用假 Clock+假 Runtime 复现 GitHub #578 反例回归。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    #578 核心反例回归（AC-2/AC-4）：注入「interrupt 返回永不 resolve 的 Promise」的假 AgentRuntimePort，
+    force-abort 安全网无条件先行（早于且独立于 interrupt，绝不排在 interrupt 的 .then/.finally 之后），
+    用假 Clock 推进 force-abort 定时器后断言 phase = terminal(aborted)、canAccept()=true，回合不卡死。
+    abort 归 ABORTED 独立类。假 Runtime + 假 Clock 直接驱动聚合根，不建完整 AbortStream 用例（属 c2-5）；
+    复用 c2-1 的 canTransitionPhase/reconcilePhase，不重写。import type + .js；核心零框架。
+- id: "c2-2-4"
+  title: 实现 canAccept 门
+  description: >-
+    实现 canAccept(): boolean，语义 ≡ phase.kind !== ACTIVE（settling/terminal 可接受新发送），
+    作为 composer 能否发送的唯一领域判据。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    canAccept 全态断言（AC-3）：active→false、settling/terminal→true；terminal 后可接新输入（gate 不再永久锁死）。
+    核心内不散落 phase==='active' 比较被 gate 复用，isStreaming gate 唯一走此方法。
+    import type + .js；假 Clock/假 Runtime 替身；phase 不落库；核心零框架。
+- id: "c2-2-5"
+  title: 实现 apply 事件累积
+  description: >-
+    实现 apply(event: AgentStreamEvent): void，把已归一事件累积进 TurnArtifacts（text/thinking/tool_use/
+    tool_result，孤儿 tool_result 保留），result 事件 usage 投影记录，且不改 phase。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    apply 累积到 TurnArtifacts（复用 c2-1 值对象与 buildFinalContent 投影，不重写）：text/thinking/tool_use/
+    tool_result 累积正确、孤儿 tool_result 保留、result 事件 tokenUsage/context_usage 投影记录（无上报留空、
+    不填 0，AC-9）。apply 只消费已归一 AgentStreamEvent（EventMapper 属 c2-3），且不迁移 phase（相位迁移只经四方法）。
+    import type + .js；假 Clock/假 Runtime 替身；核心零框架。
