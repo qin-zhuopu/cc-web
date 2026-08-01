@@ -7,7 +7,7 @@ export const meta = {
     { title: 'FileEventLog', detail: 'accept-3 文件事件日志 append-only + 单调递增 seq' },
     { title: 'PostStream', detail: 'accept-4 POST /api/sessions/stream 新建（首事件回推 id）' },
     { title: 'GetStream', detail: 'accept-5 GET /api/sessions/:id/stream 挂载已有会话' },
-    { title: 'PostMessages', detail: 'accept-6 POST /api/sessions/:id/messages 触发一轮 + 广播' },
+    { title: 'PostMessages', detail: 'accept-6 POST /api/sessions/:id/turn 触发一轮 + 广播' },
     { title: 'ResumeReplay', detail: 'accept-7 Last-Event-ID 断线补发（回放 seq 之后）' },
     { title: 'CliListen', detail: 'accept-8 CLI 监听客户端 listen --new / --session' },
     { title: 'Merge+Verify', detail: '跑 npm run test 自修到绿（核心零改动 + 守卫 0 命中）' },
@@ -120,7 +120,7 @@ const r5 = await agent(`${RULES}
 import type + .js；术语中文。不改 packages/core、不跑 npm run test。`,
   { label: 'accept-5:get-stream', phase: 'GetStream' })
 
-// ---- 波次6：POST /api/sessions/:id/messages 触发 + 广播 ----
+// ---- 波次6：POST /api/sessions/:id/turn 触发 + 广播 ----
 phase('PostMessages')
 const r6 = await agent(`${RULES}
 

@@ -12,7 +12,7 @@
 //   回合终态最终 assistant 消息落 SQLite 由核心 c2-7 接线经 C1.AppendMessageUseCase 负责，
 //   控制器【不重复落库、不边流边塞 SQLite】（一式三份的第三份职责分离，SPEC Constraints）。
 //
-// 【accept-6 范围】POST /api/sessions/:id/messages —— 向已有会话发消息触发新一轮 + 广播：
+// 【accept-6 范围】POST /api/sessions/:id/turn —— 向已有会话发消息触发新一轮 + 广播：
 //   curl 发 → 控制器经 C2.StartStreamUseCase.start(sessionId, content, ...) 起一轮 →【立即返回】
 //   受理确认 { accepted:true, streamId }（不阻塞在事件流上、不等回合结束）→ 后台消费 events：
 //   每事件【一式三份的前两份】——① 经 accept-3 FileEventLog.append 拿 seq（补发数据源）；
@@ -22,7 +22,7 @@
 //
 // 【accept-5 + accept-7 范围】GET /api/sessions/:id/stream —— 挂载已有会话的实时流（含断线补发）：
 //   1. 给 id 就挂上：返回 text/event-stream；
-//   2. 挂载本身【不触发新回合】（回合由 POST /:id/messages 或 POST /stream 触发），只接入广播 + 补发；
+//   2. 挂载本身【不触发新回合】（回合由 POST /:id/turn 或 POST /stream 触发），只接入广播 + 补发；
 //   3. 【accept-7 断线补发】读请求头 Last-Event-ID: N（缺省/非法按 0 = 从头补发；约定选择见方法注释）
 //      → 经 accept-3 FileEventLog.readAfter(sessionId, N) 逐条回放 seq>N 的历史事件，带【原 seq】作
 //      SSE id（补发不重新分配 seq，忠实复用日志里的 seq）→ 记本次遍历读到的最大 seq（maxSeq，无产出则 0）；
@@ -55,7 +55,7 @@
 //   归一事件不伪造（反假数据）。因需在发起（异步）后手写事件流响应，采用 @Res 手写 SSE
 //   （NestJS @Sse 仅绑 GET，不适配 POST 发起语义）。
 //
-// 【安全提醒】/api/sessions/stream、GET /api/sessions/:id/stream、POST /api/sessions/:id/messages 均
+// 【安全提醒】/api/sessions/stream、GET /api/sessions/:id/stream、POST /api/sessions/:id/turn 均
 //   【无鉴权 / 无访问控制】。项目定位为「本机运行的单机应用」，服务应绑 loopback（127.0.0.1）、
 //   绝不暴露公网——无认证的新建 + 回合发起端点会被任意触发模型调用、消耗 litellm 额度；
 //   无认证的 GET 挂载端点会被任意进程接入任意会话的实时流（旁听全部流式内容）。
@@ -178,7 +178,7 @@ interface SendMessageBody {
 }
 
 /**
- * 发消息受理确认 —— POST /:id/messages 立即返回体（不阻塞在事件流上）。
+ * 发消息受理确认 —— POST /:id/turn 立即返回体（不阻塞在事件流上）。
  * accepted 恒真表「已受理并起回合」；streamId 供调用方关联本轮（实时事件走挂载的 GET /:id/stream）。
  */
 interface SendMessageAck {
@@ -242,7 +242,7 @@ export class SessionStreamController {
   }
 
   /**
-   * POST /api/sessions/:id/messages —— 向已有会话发消息触发新一轮，【立即返回】受理确认。
+   * POST /api/sessions/:id/turn —— 向已有会话发消息触发新一轮，【立即返回】受理确认。
    *
    * 与 createAndStream 的关键差异：本端点【不持有 SSE 长连接】——curl 发出后立刻拿到
    * { accepted:true, streamId } 就断开，回合在后台跑；实时事件由挂在该会话上的
@@ -257,7 +257,7 @@ export class SessionStreamController {
    * 后台消费的异常被隔离吞掉（best-effort，回合失败终态由核心用例经 StreamStatus / 事件流表达，
    * 不由本 HTTP 响应承载——响应此刻已返回）。
    */
-  @Post(':id/messages')
+  @Post(':id/turn')
   @HttpCode(202)
   async sendMessage(
     @Param('id') sessionId: string,
@@ -276,7 +276,7 @@ export class SessionStreamController {
   /**
    * GET /api/sessions/:id/stream —— 挂载已有会话的实时流（accept-5 基础挂载 + accept-7 Last-Event-ID 断线补发）。
    *
-   * 给 id 就挂上：返回 text/event-stream。挂载本身【不触发新回合】——回合由 POST /:id/messages
+   * 给 id 就挂上：返回 text/event-stream。挂载本身【不触发新回合】——回合由 POST /:id/turn
    * 或 POST /stream 触发，本端点只接入广播 + 补发。
    *
    * 流程（accept-5 + accept-7）：

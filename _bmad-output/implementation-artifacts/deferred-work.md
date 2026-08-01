@@ -79,3 +79,4 @@
 - source_spec: `epic-accept/SPEC.md`
   summary: 【accept-6 路由冲突 · 需用户拍板路径 · 阻断该端点功能】POST /api/sessions/:id/messages 被 C1 既有 MessageController（@Controller('api')，注册 POST sessions/:id/messages 落消息表）遮蔽——AppModule 里 ConversationModule 排在 AgentRuntimeModule 前，C1 路由先注册，accept-6 的 sendMessage 永不被调用（实测 POST 返回 500 NOT NULL constraint failed: messages.role）。这是端点路径设计与 C1 既有 REST 契约撞车，非局部 bug。待用户决策路径（建议 accept-6 改 POST /api/sessions/:id/turn 或 /:id/chat，不动 C1 既有契约，风险最低；改后需同步 SPEC CAP-6 + accept-8 CLI listen 发消息路径）。accept-6 标 backlog、epic-accept 保持 in-progress 直到解决。
   evidence: 路由映射日志显示两控制器都 Mapped 同一路径；POST 实际栈追踪到 MessageController.append 非 SessionStreamController.sendMessage。
+  resolution: 【已解决】accept-6 改独立路径 POST /api/sessions/:id/turn（起 AI 回合+广播），与 C1 的 POST /api/sessions/:id/messages（落消息表）分离，不再遮蔽。同步更新了 controller 路由、CLI 注释、spec、SPEC CAP-6、stories.yaml、sprint-plan、e2e-smoke.md/.sh。门禁 727 测试全绿。

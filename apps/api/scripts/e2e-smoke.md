@@ -27,7 +27,8 @@ node dist/main.js
 ```
 
 预期 stdout 末行：`codepilot-api 已启动：http://127.0.0.1:3001（本机单机，无鉴权，勿暴露公网）`。
-所有 accept 路由被 Mapped：`POST /api/sessions/stream`、`POST /api/sessions/:id/messages`、`GET /api/sessions/:id/stream`。
+所有 accept 路由被 Mapped：`POST /api/sessions/stream`、`POST /api/sessions/:id/turn`、`GET /api/sessions/:id/stream`。
+> 【路由说明】发消息触发 AI 回合走 `POST /api/sessions/:id/turn`（accept-6，起 C2 回合+广播）。注意区别于 C1 既有的 `POST /api/sessions/:id/messages`（落消息表，纯追加）——两者语义不同，故 accept-6 用独立路径 `/turn` 避免遮蔽。
 
 > 【安全】服务只绑 `127.0.0.1`；token 经 `set -a/.env` 注入进程内存，不进命令行参数（ps 可见面）、不进响应体/事件日志/CLI 输出。
 
@@ -48,11 +49,11 @@ node apps/api/bin/listen.mjs --new "用一句话介绍你自己，然后停止�
 > （非本 epic 代码问题——直接 `curl /v1/messages` 同名模型可成功，但经 Claude Agent SDK 不行；详见 deferred-work.md）。
 > 此时链路编排本身（建会话→首事件→SSE 流→seq 递增→日志落盘→终态落库）全部正常，只是 AI 正文为错误回包。
 
-## 3. 终端 B：curl `POST /api/sessions/:id/messages` 发第二句
+## 3. 终端 B：curl `POST /api/sessions/:id/turn` 发第二句
 
 ```bash
 SID=<终端A打印的id>
-curl -i -X POST "http://127.0.0.1:3001/api/sessions/$SID/messages" \
+curl -i -X POST "http://127.0.0.1:3001/api/sessions/$SID/turn" \
   -H 'Content-Type: application/json' \
   -d '{"content":"再补一句。","model":"JerehW-kimi-k2.6","providerId":"anthropic-claude","mode":"ask"}'
 ```
@@ -60,11 +61,8 @@ curl -i -X POST "http://127.0.0.1:3001/api/sessions/$SID/messages" \
 **预期（accept-6 契约）**：立即返回 `202 Accepted`，body `{"accepted":true,"streamId":"..."}`（不阻塞在事件流上）；
 终端 A（若仍挂在 GET stream）实时滚出第二轮事件。
 
-> **当前已知阻塞（路由遮蔽）**：实测返回 `500`，服务端日志报 `NOT NULL constraint failed: messages.role`，
-> 抛自 `MessageController.append`（C1 既有控制器，`@Controller('api')` 注册了 `POST sessions/:id/messages`）。
-> accept-6 的 `SessionStreamController`（`@Controller('api/sessions')`）注册了**完全相同**的 `POST :id/messages` 路由，
-> 因 `ConversationModule` 在 `AppModule.imports` 里排在 `AgentRuntimeModule` 之前，C1 的路由先注册、**遮蔽**了 accept-6。
-> 修法见 `deferred-work.md`（属 accept-6 范围，本 smoke 仅记录）。
+> **路由遮蔽已解决**：accept-6 原占 `POST :id/messages`，与 C1 既有 `MessageController`（`@Controller('api')` 注册 `POST sessions/:id/messages` 落消息表）完全撞路径，被 C1 先注册遮蔽（实测返回 `500 NOT NULL constraint failed: messages.role`）。
+> 已将 accept-6 改为独立路径 `POST /api/sessions/:id/turn`（起 C2 回合+广播），与 C1 的 `:id/messages`（纯追加消息）语义分离、互不遮蔽。
 
 ## 4. 断开 A、带 Last-Event-ID 重挂补发（accept-7）
 
@@ -108,4 +106,4 @@ node -e "const D=require('better-sqlite3');const db=new D('codepilot.db',{readon
 
 ## 自动化等价
 
-`bash apps/api/scripts/e2e-smoke.sh` 自动覆盖第 0/1/2/4/6 步的可机器判定部分（首事件 id、seq 单调、日志落盘、SQLite 落库、Last-Event-ID 补发、CLI 连通），并如实报告两个已知阻塞（模型协商、路由遮蔽）。第 3 步（POST messages）因路由遮蔽当前返回 500；第 5 步（resume 续接）需人工双终端观察且依赖真实 AI 可用。
+`bash apps/api/scripts/e2e-smoke.sh` 自动覆盖第 0/1/2/4/6 步的可机器判定部分（首事件 id、seq 单调、日志落盘、SQLite 落库、Last-Event-ID 补发、CLI 连通），并如实报告已知阻塞（模型协商）。第 3 步（POST /:id/turn）路由遮蔽已解决（accept-6 改独立路径 /turn）；第 5 步（resume 续接）需人工双终端观察且依赖真实 AI 可用。

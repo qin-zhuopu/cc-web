@@ -35,7 +35,7 @@
 #   （返回写死的单个 Claude provider 配置）；核心只 import type，接口保留。
 # - 新增 EPIC-ACCEPT（验收链路）：替代前端，用 CLI + curl 打通端到端。
 #   接口三件套：GET /api/sessions/:id/stream（挂载）、POST /api/sessions/stream
-#   （新建，带完整 query options + 首句）、POST /api/sessions/:id/messages（发消息）。
+#   （新建，带完整 query options + 首句）、POST /api/sessions/:id/turn（发消息触发 AI 回合；/turn 非 /messages，避免与 C1 撞路径）。
 #   一式三份：SSE 实时推 / 文件事件日志（append-only，带 seq）/ 一轮结束落 SQLite。
 #   断线补发：客户端带 Last-Event-ID 重连，NestJS 从文件日志补发 seq 之后的事件。
 
@@ -190,13 +190,13 @@ development_status:
 
   # ===================== EPIC-ACCEPT · 验收链路（新增，替代前端） =====================
   # SSE 为中心的三件套接口 + 一式三份 + 断线补发 + CLI 监听客户端 + C7 stub。
-  epic-accept: in-progress
+  epic-accept: done
   accept-1-provider-repository-claude-stub: done
   accept-2-sse-broadcast-hub-per-session: done
   accept-3-event-log-file-adapter-append-with-seq: done
   accept-4-post-stream-create-session-with-options: done
   accept-5-get-stream-attach-existing-session: done
-  accept-6-post-messages-trigger-turn-broadcast: backlog
+  accept-6-post-messages-trigger-turn-broadcast: done
   accept-7-resume-replay-via-last-event-id: done
   accept-8-cli-listen-client-new-and-attach: done
   accept-9-end-to-end-smoke-new-stream-send-reconnect: deferred

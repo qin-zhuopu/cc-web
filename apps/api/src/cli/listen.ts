@@ -613,7 +613,7 @@ function describeError(e: unknown): string {
  *     重连带 Last-Event-ID = state.lastSeq（对齐 accept-7 补发）。
  *
  * 【为何成功结束也重连】SSE 是长连接：服务端 res.end()（如 POST /stream 一轮跑完）会令 body done。
- *   对 --new 模式，一轮结束后客户端通常想继续挂着等下一轮（由 POST /:id/messages 触发），
+ *   对 --new 模式，一轮结束后客户端通常想继续挂着等下一轮（由 POST /:id/turn 触发），
  *   故切到 GET /:id/stream 重连（用已拿到的 sessionId），带 Last-Event-ID 补发断线期间事件。
  *   对 --session 模式，连接断开同理重连。
  *

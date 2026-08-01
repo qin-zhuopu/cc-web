@@ -29,7 +29,7 @@ sources:
 
 ## 安全事实（范围边界内必须周知）
 
-- **这些是 HTTP 网络端点，且本期完全无鉴权 / 无访问控制。** `POST /api/sessions/stream`、`GET /api/sessions/:id/stream`、`POST /api/sessions/:id/messages` 都不校验任何身份、令牌或来源。任何能访问该端口的进程都能新建会话、挂载任意会话的实时流、向任意会话发消息触发 AI 回合并消耗 litellm 额度。
+- **这些是 HTTP 网络端点，且本期完全无鉴权 / 无访问控制。** `POST /api/sessions/stream`、`GET /api/sessions/:id/stream`、`POST /api/sessions/:id/turn` 都不校验任何身份、令牌或来源。任何能访问该端口的进程都能新建会话、挂载任意会话的实时流、向任意会话发消息触发 AI 回合并消耗 litellm 额度。
 - **本期定位：本机使用、无 UI 的验收后端**（sprint-plan §一「无 UI 的本机对话后端」、§四「完全不做前端 UI」）。因此本 epic **有意不引入鉴权**，服务应仅**绑定 loopback（`127.0.0.1`）**、**不对外网暴露端口**。这是明确记录在案的安全取舍，供承接者知晓——一旦将来要跨机/公网使用，鉴权与访问控制是上线前的**硬前置**（不在本期范围）。
 - **文件事件日志会落盘会话全部流式内容**（含用户输入与 AI 回复正文），属潜在敏感数据；本期存明文于本机工作目录，不加密、不轮转清理，仅供本机验收——同样不对外分发。
 - **密钥纪律**：litellm 令牌 `ANTHROPIC_AUTH_TOKEN` 只在 `apps/api/.env`（已 gitignored），accept 端点与 CLI 绝不回显、绝不写入事件日志或响应体。
@@ -56,9 +56,10 @@ sources:
   - **intent:** `GET /api/sessions/:id/stream`：给 id 就挂上，一直收 SSE（sprint-plan §二）。控制器订阅 CAP-2 中枢的该 sessionId，把后续该会话的所有回合事件实时推给本连接；连接断开时 unsubscribe。挂载本身**不触发新回合**（回合由 `POST /messages` 触发），只是接入广播。
   - **success:** `GET /api/sessions/:id/stream` 返回 `text/event-stream`；订阅 CAP-2 中枢 → 收到该会话广播事件即推（带 seq 作 SSE id）；连接关闭调 unsubscribe（无泄漏）。可 e2e 断言：先挂载再对同会话 publish → 该连接收到；断开后中枢订阅者集合清空。（含 `Last-Event-ID` 补发的完整行为见 CAP-7。）
 
-- **CAP-6 · POST /api/sessions/:id/messages 发消息触发一轮 + 广播给所有挂载连接（accept-6）**
-  - **intent:** `POST /api/sessions/:id/messages`：curl 发，**立即返回**（不等回合结束），触发新一轮；事件**广播给所有挂在该会话 stream 上的连接**（sprint-plan §二）。控制器经 `C2.StartStreamUseCase.start(sessionId, content, ...)` 起一轮，把事件流消费后每事件**一式三份**（file-event-log append 拿 seq → publish 到 CAP-2 中枢 fan-out 给所有 GET stream 订阅者）。HTTP 响应体只回一个受理确认（如 `{ accepted: true, streamId }`），不阻塞在事件流上。
-  - **success:** 新增 `POST /api/sessions/:id/messages` handler：立即 202/200 返回受理确认；后台消费事件流 → 每事件 append 日志 + publish 中枢。e2e 断言（stub runtime）：POST 立即返回；两个挂在该会话的 GET stream 连接都收到该轮事件、seq 一致递增；事件也写进了文件日志。**真回合需真实 litellm（accept-9）。**
+- **CAP-6 · POST /api/sessions/:id/turn 发消息触发一轮 + 广播给所有挂载连接（accept-6）**
+  - **intent:** `POST /api/sessions/:id/turn`：curl 发，**立即返回**（不等回合结束），触发新一轮；事件**广播给所有挂在该会话 stream 上的连接**（sprint-plan §二）。控制器经 `C2.StartStreamUseCase.start(sessionId, content, ...)` 起一轮，把事件流消费后每事件**一式三份**（file-event-log append 拿 seq → publish 到 CAP-2 中枢 fan-out 给所有 GET stream 订阅者）。HTTP 响应体只回一个受理确认（如 `{ accepted: true, streamId }`），不阻塞在事件流上。
+    > 【路由设计】accept-6 用独立路径 `/turn` 而非 `/messages`：C1 既有 `MessageController` 已占 `POST /api/sessions/:id/messages`（落消息表，纯追加），二者语义不同（turn=起 AI 回合+广播，messages=追加消息记录），撞路径会致 C1 路由遮蔽 accept-6，故分离。
+  - **success:** 新增 `POST /api/sessions/:id/turn` handler：立即 202/200 返回受理确认；后台消费事件流 → 每事件 append 日志 + publish 中枢。e2e 断言（stub runtime）：POST 立即返回；两个挂在该会话的 GET stream 连接都收到该轮事件、seq 一致递增；事件也写进了文件日志。**真回合需真实 litellm（accept-9）。**
 
 - **CAP-7 · Last-Event-ID 断线补发（从文件日志回放 seq 之后事件）（accept-7）**
   - **intent:** 客户端带 `Last-Event-ID: N` 重连 `GET /api/sessions/:id/stream` → 控制器先经 `file-event-log.readAfter(sessionId, N)` 从文件日志**逐条补发 seq>N 的历史事件**（带原 seq 作 SSE id）→ **补发完毕再接上实时流**（订阅 CAP-2 中枢）。补发与实时之间不丢事件、不重复（补发到当前末尾 seq，再切实时；需处理补发期间新到事件的衔接，避免缝隙或重复）。
@@ -69,7 +70,7 @@ sources:
   - **success:** 新增 `apps/api/src/cli/listen.ts`（或 `apps/api/bin/listen.*`）：解析 `--new` / `--session <id>` / 可选 options；建立 SSE 连接、解析 `id:`/`data:`、按事件类型友好打印（text/thinking/tool_*/status/result 等）；记录最后 seq，断线重连带 `Last-Event-ID`。可对本地 stub server 做冒烟；**对真 AI 的端到端属 accept-9**。CLI 不打印/不落任何密钥。
 
 - **CAP-9 · 端到端 smoke：新建→流式→curl 发消息→断线重挂补发（accept-9，需真实环境）**
-  - **intent:** 把全链路串起来验证（sprint-plan §五 S9 产出）：终端 A 跑 CLI `listen --new` 拿 id 并实时滚出第一轮流式事件 → 终端 B `curl POST /api/sessions/:id/messages` 发第二句 → 终端 A 实时滚出该轮全部事件 → 断开 A、带 `Last-Event-ID` 重挂 → 补发断线期间事件不丢 → （可选）关掉重开、`listen --session <id>` 接着聊（resume 续接由 c2-6 适配器保证）。
+  - **intent:** 把全链路串起来验证（sprint-plan §五 S9 产出）：终端 A 跑 CLI `listen --new` 拿 id 并实时滚出第一轮流式事件 → 终端 B `curl POST /api/sessions/:id/turn` 发第二句 → 终端 A 实时滚出该轮全部事件 → 断开 A、带 `Last-Event-ID` 重挂 → 补发断线期间事件不丢 → （可选）关掉重开、`listen --session <id>` 接着聊（resume 续接由 c2-6 适配器保证）。
   - **success:** 一份可复现的端到端 smoke 步骤/脚本（如 `apps/api/scripts/e2e-smoke.*` 或文档化 checklist），跑通「新建→流式→发消息→断线补发→续接」。**此故事需真实 litellm 代理**（`apps/api/.env` 已配 `ANTHROPIC_BASE_URL=https://litellm.jereh.cn`、模型 `Jereh-Kimi-K2.6`），**无法纯 `npm run test` 自测**——它验证的是真实 SDK-网络-进程链路，属「需真实环境验证」类。前 8 个能力（CAP-1~CAP-8）用 stub/假 runtime 可纯单测/e2e，本能力是唯一必须真实环境的收尾验收。
 
 ## Constraints
@@ -110,7 +111,7 @@ sources:
 ## Success signal
 
 - CAP-1~CAP-3（provider stub / SSE 广播中枢 / 文件事件日志）在 apps/api 内 `npm run test`（vitest）单测全绿：stub 返回单 Claude provider 无密钥字面量；中枢多订阅 fan-out / unsubscribe / 隔离正确；文件日志 seq 严格 +1、append-only、readAfter 只返 seq>N 有序、脏行跳过。
-- CAP-4~CAP-7（三件套接口 + 补发）e2e（supertest + stub/假 runtime）通过：`POST /stream` 首事件回推新 session id、后续带递增 seq；`GET /:id/stream` 挂载收广播；`POST /:id/messages` 立即返回且广播给所有挂载连接、事件入日志；`Last-Event-ID: N` 重连只补发 seq>N、有序、衔接实时不丢不重。
+- CAP-4~CAP-7（三件套接口 + 补发）e2e（supertest + stub/假 runtime）通过：`POST /stream` 首事件回推新 session id、后续带递增 seq；`GET /:id/stream` 挂载收广播；`POST /:id/turn` 立即返回且广播给所有挂载连接、事件入日志；`Last-Event-ID: N` 重连只补发 seq>N、有序、衔接实时不丢不重。
 - CAP-8（CLI）对本地 stub server 冒烟通过：`--new` 拿到并打印 session id、滚动打印事件；`--session <id>` 挂载打印；断线重连带 `Last-Event-ID`。CLI 输出无密钥。
 - **CAP-9（端到端 smoke，需真实环境）**：接真实 litellm（`ANTHROPIC_BASE_URL=https://litellm.jereh.cn`、`Jereh-Kimi-K2.6`），人工/脚本跑通「终端 A `listen --new` 拿 id 实时滚事件 → 终端 B curl 发消息 → A 实时收该轮 → 断线带 `Last-Event-ID` 重挂补发不丢 → 关掉重开接着聊」。**此项不入 `npm run test` 自测门**，是本期最终验收的真实环境证据。
 - 静态：`packages/core` 无本 epic 引入的任何改动（本 epic 只增删 apps/api 文件）；核心禁用 import 扫描仍 0 命中。

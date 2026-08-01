@@ -24,8 +24,8 @@
 #   1. SDK↔litellm 模型名协商：即便覆盖成 litellm /v1/models 列出的有效名，Claude Agent SDK
 #      经 /v1/messages 仍报「模型不存在」（直接 curl /v1/messages 同名却能成功）——属 SDK 与网关的
 #      anthropic 协议路由层兼容问题，非本 epic 代码问题（详见 deferred-work.md）。
-#   2. POST /api/sessions/:id/messages 路由被 C1 MessageController 遮蔽（详见 deferred-work.md
-#      accept-9 路由冲突条目）——本脚本会探测并报告，不阻塞其余项。
+#   （路由遮蔽阻塞已解决：accept-6 改独立路径 POST /api/sessions/:id/turn，不再与 C1 的
+#    POST /api/sessions/:id/messages 撞路径。）
 #
 # 用法（在仓库根或 apps/api 下均可）：
 #   bash apps/api/scripts/e2e-smoke.sh
@@ -200,18 +200,18 @@ else
   no "无 sessionId，跳过补发验证"
 fi
 
-# —— 6. POST /:id/messages 路由探测（accept-6，已知被 MessageController 遮蔽） ————
-section "6. POST /:id/messages（accept-6，探测路由）"
+# —— 6. POST /:id/turn 路由探测（accept-6，独立路径避免被 C1 MessageController 遮蔽） ————
+section "6. POST /:id/turn（accept-6，探测路由）"
 if [ -n "${SID}" ]; then
-  RESP="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST "${BASE}/api/sessions/${SID}/messages" \
+  RESP="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST "${BASE}/api/sessions/${SID}/turn" \
     -H 'Content-Type: application/json' \
     -d '{"content":"第二句","model":"'"${MODEL_OVERRIDE}"'","providerId":"anthropic-claude","mode":"ask"}' 2>/dev/null || echo 000)"
   if [ "${RESP}" = "202" ]; then
-    ok "POST /:id/messages 返回 202（accept-6 sendMessage 路由生效，立即受理）"
+    ok "POST /:id/turn 返回 202（accept-6 sendMessage 路由生效，立即受理）"
   elif [ "${RESP}" = "500" ]; then
-    no "POST /:id/messages 返回 500 —— 命中 C1 MessageController（路由被遮蔽，见 deferred-work.md）"
+    no "POST /:id/turn 返回 500（链路异常；若服务端日志报模型不存在则属 SDK↔litellm 模型协商阻塞，见 deferred-work.md，非路由问题）"
   else
-    no "POST /:id/messages 返回 ${RESP}（非预期）"
+    no "POST /:id/turn 返回 ${RESP}（非预期）"
   fi
 fi
 

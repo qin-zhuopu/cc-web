@@ -408,7 +408,7 @@ describe('SessionStreamController —— GET /api/sessions/:id/stream 挂载已�
 });
 
 // ============================================================================
-// accept-6 / SPEC CAP-6 —— POST /api/sessions/:id/messages 发消息触发一轮 + 广播给所有挂载连接。
+// accept-6 / SPEC CAP-6 —— POST /api/sessions/:id/turn 发消息触发一轮 + 广播给所有挂载连接。
 // 用真实 SessionSseHub + tmpdir FileEventLog + 假 StartStream（stub events）断言：
 //   - POST 立即返回受理确认 { accepted:true, streamId }，不阻塞在事件流上（不等回合结束）；
 //   - 入参 sessionId 用路径参数、content/model/providerId 正确透传给 StartStream；
@@ -417,7 +417,7 @@ describe('SessionStreamController —— GET /api/sessions/:id/stream 挂载已�
 //   真回合需真实 litellm（属 accept-9），本故事用 stub runtime（假 events 序列）。
 // ============================================================================
 
-describe('SessionStreamController —— POST /api/sessions/:id/messages 发消息触发一轮 + 广播', () => {
+describe('SessionStreamController —— POST /api/sessions/:id/turn 发消息触发一轮 + 广播', () => {
   let baseDir: string;
   let eventLog: FileEventLog;
 
@@ -571,7 +571,7 @@ describe('SessionStreamController —— POST /api/sessions/:id/messages 发消�
 
   // ============================================================================
   // 【F1 回归】seq 双重分配致「文件日志写 N+1 行 / 断线补发重复」。
-  //   评审 F1 指出的测试盲区：生产者侧（POST /:id/messages 的 consumeInBackground）每事件 append
+  //   评审 F1 指出的测试盲区：生产者侧（POST /:id/turn 的 consumeInBackground）每事件 append
   //   拿 seq 后 publish 信封；GET /:id/stream 挂载的订阅者 listener 收到信封后【若再次 append】，
   //   同一事件会被写进文件日志两次、分配两个不同 seq，破坏「一行一事件」与断线补发「不丢不重」。
   //   修复后 listener 复用信封携带的 seq 写帧、绝不二次 append——故 N 条事件恰好 N 行、seq 1..N 严格递增无重复。
@@ -927,7 +927,7 @@ async function settleTicks(ticks = 50): Promise<void> {
 }
 
 /**
- * 等待某会话文件日志落定到至少 expected 行（POST /:id/messages 的后台消费不阻塞 ack，
+ * 等待某会话文件日志落定到至少 expected 行（POST /:id/turn 的后台消费不阻塞 ack，
  * 消费期 append 是异步；这里轮询 readAfter 计数直到达到预期，含超时兜底）。
  */
 async function waitForLog(

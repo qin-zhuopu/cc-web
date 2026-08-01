@@ -1,7 +1,7 @@
 # Epic ACCEPT · 验收链路（替代前端：SSE 三件套 + 一式三份 + 断线补发 + CLI）—— dev-auto 分派用故事清单
 # schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
 # 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
-# 依赖排序：provider stub → SSE 广播中枢 → 文件事件日志 → POST /stream 新建 → GET /:id/stream 挂载 → POST /:id/messages 触发+广播 → Last-Event-ID 补发 → CLI 监听 → 端到端 smoke。
+# 依赖排序：provider stub → SSE 广播中枢 → 文件事件日志 → POST /stream 新建 → GET /:id/stream 挂载 → POST /:id/turn 触发+广播 → Last-Event-ID 补发 → CLI 监听 → 端到端 smoke。
 # 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
 # 本 epic 全部落 apps/api 最外层驱动/出站适配器（NestJS 控制器 / SSE / 文件日志 / 广播中枢 / CLI），
 # packages/core 零框架、零文件、零 SQL 完全不改；复用 C1 会话/消息用例、C2 StartStream/AbortStream 用例、c2-6 ClaudeSdkRuntimeAdapter、c2-7 接线。
@@ -68,13 +68,14 @@
     e2e 断言：先挂载再对同会话 publish → 该连接收到；断开后中枢订阅者集合清空；不同会话互不串。（Last-Event-ID 补发的完整行为属 accept-7，本故事只做纯实时挂载。）
     复用 accept-2 中枢。import type + .js；术语中文；无鉴权（记录在案）。不改 packages/core。
 - id: "accept-6-post-messages-trigger-turn-broadcast"
-  title: POST /api/sessions/:id/messages 发消息触发一轮 + 广播给所有挂载连接
+  title: POST /api/sessions/:id/turn 发消息触发一轮 + 广播给所有挂载连接
   description: >-
-    POST /api/sessions/:id/messages：curl 发，立即返回（不等回合结束），触发新一轮；事件广播给所有挂在该会话 stream 上的连接。
+    POST /api/sessions/:id/turn：curl 发，立即返回（不等回合结束），触发新一轮；事件广播给所有挂在该会话 stream 上的连接。
     经 C2.StartStreamUseCase.start 起一轮，事件流消费后每事件一式三份（file-event-log append 拿 seq → publish 到中枢 fan-out 给所有 GET stream 订阅者）。详见 SPEC.md 的 CAP-6。
+    【路由】用独立路径 /turn（非 /messages）：C1 既有 MessageController 已占 POST :id/messages 落消息表，二者语义不同，撞路径会被 C1 遮蔽，故分离。
   spec_checkpoint: false
   invoke_dev_with: >-
-    加 POST /api/sessions/:id/messages handler：立即 202/200 返回受理确认（如 { accepted:true, streamId }，不阻塞事件流）；
+    加 POST /api/sessions/:id/turn handler：立即 202/200 返回受理确认（如 { accepted:true, streamId }，不阻塞事件流）；
     后台经 C2.StartStreamUseCase.start(sessionId, content, ...) 起一轮 → 消费 events：每事件经 accept-3 append 拿 seq + 经 accept-2 中枢 publish 广播。
     终态最终消息落库由核心 c2-7 经 C1.AppendMessageUseCase 负责，控制器不重复落库。
     e2e（stub runtime）断言：POST 立即返回；两个挂在该会话的 GET stream 连接都收到该轮事件、seq 一致递增；事件写进文件日志。真回合需真实 litellm（属 accept-9）。
@@ -112,7 +113,7 @@
   invoke_dev_with: >-
     产出一份可复现的端到端 smoke 步骤/脚本（如 apps/api/scripts/e2e-smoke.* 或文档化 checklist），跑通「新建→流式→发消息→断线补发→续接」。
     需真实环境：apps/api/.env 已配 ANTHROPIC_BASE_URL=https://litellm.jereh.cn、模型 Jereh-Kimi-K2.6（密钥 ANTHROPIC_AUTH_TOKEN 只在 .env、绝不回显/入库）。
-    步骤：启 apps/api（绑 loopback 127.0.0.1，无鉴权本机用）→ 终端 A `listen --new` 拿 id 看第一轮流式 → 终端 B curl POST /api/sessions/:id/messages 发消息 → A 实时收该轮 →
+    步骤：启 apps/api（绑 loopback 127.0.0.1，无鉴权本机用）→ 终端 A `listen --new` 拿 id 看第一轮流式 → 终端 B curl POST /api/sessions/:id/turn 发消息 → A 实时收该轮 →
     A 断线后带 Last-Event-ID 重挂验证补发不丢 → 重开 `listen --session <id>` 验证 resume 续接。
     这是本期最终验收的真实环境证据，不入 npm run test 自测门（前 8 个故事用 stub/假 runtime 可纯单测/e2e）。
     术语中文；不改 packages/core；smoke 脚本/输出绝不打印密钥。
