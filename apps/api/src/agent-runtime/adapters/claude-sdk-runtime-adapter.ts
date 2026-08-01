@@ -15,7 +15,7 @@
 //   或该 streamId 已不在，则 no-op，绝不 evict 别的 turn 句柄。
 //
 // 【.env 注入】query() 的 options.env 注入 apps/api/.env 的 litellm 配置（ANTHROPIC_BASE_URL/
-//   ANTHROPIC_AUTH_TOKEN/各 *_MODEL=Jereh-Kimi-K2.6/CLAUDE_CODE_*）。token 绝不写日志/回显。
+//   ANTHROPIC_AUTH_TOKEN/各 *_MODEL=claude-sonnet-4-5/CLAUDE_CODE_*）。token 绝不写日志/回显。
 
 import { query, type Query, type Options, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {

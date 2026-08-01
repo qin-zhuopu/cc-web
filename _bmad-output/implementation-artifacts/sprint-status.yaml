@@ -199,5 +199,5 @@ development_status:
   accept-6-post-messages-trigger-turn-broadcast: done
   accept-7-resume-replay-via-last-event-id: done
   accept-8-cli-listen-client-new-and-attach: done
-  accept-9-end-to-end-smoke-new-stream-send-reconnect: deferred
+  accept-9-end-to-end-smoke-new-stream-send-reconnect: done
   epic-accept-retrospective: optional

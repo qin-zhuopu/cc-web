@@ -54,10 +54,13 @@ export interface ParsedArgs {
 /**
  * 默认值 —— 与 apps/api/.env / SPEC 对齐的 litellm 网关模型。
  * model / providerId 对齐 accept-1 stub（apps/api/src/agent-runtime/adapters/stub-provider-repository.ts）。
+ *
+ * 【accept-9 resolution】改用 'claude-sonnet-4-5'：Claude Agent SDK（claude CLI 子进程）对该名能正确
+ *   路由，而 'Jereh-*' 前缀名经 SDK 报模型不存在（详见 deferred-work.md accept-9）。
  */
 export const DEFAULTS = {
   baseUrl: 'http://127.0.0.1:3001',
-  model: 'Jereh-Kimi-K2.6',
+  model: 'claude-sonnet-4-5',
   providerId: 'anthropic-claude',
 } as const;
 

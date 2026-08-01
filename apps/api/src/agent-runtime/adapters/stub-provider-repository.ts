@@ -5,7 +5,7 @@
 //   但 c2-7 接线的 StartStreamService / GenerateTitleService 构造依赖注入一个 C7.ProviderReadPort
 //   只读端口，才能把 providerId 解析成 协议 / model / 认证态 并装配 DI 图。本 stub 写死单个
 //   Claude/anthropic provider 配置（映射到 RuntimeKind.CLAUDE_SDK，model 对齐 litellm 网关
-//   Jereh-Kimi-K2.6），使本机 CLAUDE_SDK 单链路可端到端跑通。C7 真正落地后，AgentRuntimeModule
+//   claude-sonnet-4-5），使本机 CLAUDE_SDK 单链路可端到端跑通。C7 真正落地后，AgentRuntimeModule
 //   改 import ProviderManagementModule 并绑其 SqliteProviderRepository，本 stub 退场；控制器/用例引用点不变。
 //
 // 【只读纪律】只实现 ProviderReadPort 仅有的只读方法 resolve；绝不含任何写路径
@@ -26,8 +26,13 @@ import type { ProviderReadPort, ResolvedProviderView } from '@codepilot/core';
 /**
  * DEFAULT_STUB_MODEL —— stub 默认解析出的模型（对齐 litellm 网关统一路由模型）。
  * 非密钥、可安全硬编码；未经构造注入 model 时回退到此默认。
+ *
+ * 【accept-9 resolution】原 'Jereh-Kimi-K2.6' 虽在网关 /v1/models 列表内，但 Claude Agent SDK
+ *   （经 claude CLI 子进程）对该名报 400 [1211][模型不存在]——CLI 内部有模型名校验/映射，只认其已知
+ *   模型族名。经实测，网关别名 'claude-sonnet-4-5' 是 CLI 已知名且能被 SDK 正确路由（curl 直连同名
+ *   亦成功），故改用之。详见 deferred-work.md accept-9 条目。
  */
-export const DEFAULT_STUB_MODEL = 'Jereh-Kimi-K2.6';
+export const DEFAULT_STUB_MODEL = 'claude-sonnet-4-5';
 
 /**
  * StubProviderRepository —— 写死单个 Claude/anthropic provider 的 C7.ProviderReadPort 只读占位实现。

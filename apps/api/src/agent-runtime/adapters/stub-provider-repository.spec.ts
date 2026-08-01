@@ -12,7 +12,7 @@ import { StubProviderRepository, DEFAULT_STUB_MODEL } from './stub-provider-repo
 
 describe('StubProviderRepository', () => {
   it('resolve 恒返回单个 anthropic 协议的只读视图（忽略 providerId）', async () => {
-    const repo = new StubProviderRepository(true, 'Jereh-Kimi-K2.6');
+    const repo = new StubProviderRepository(true, 'claude-sonnet-4-5');
     const a = await repo.resolve('any-provider-id');
     const b = await repo.resolve('another-id');
 
@@ -35,7 +35,7 @@ describe('StubProviderRepository', () => {
 
     const fallback = new StubProviderRepository(true);
     expect((await fallback.resolve('x')).model).toBe(DEFAULT_STUB_MODEL);
-    expect(DEFAULT_STUB_MODEL).toBe('Jereh-Kimi-K2.6');
+    expect(DEFAULT_STUB_MODEL).toBe('claude-sonnet-4-5');
 
     // 空串视为未定，回退默认
     const emptyModel = new StubProviderRepository(true, '');

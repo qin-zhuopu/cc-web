@@ -73,7 +73,7 @@ describe('ChatController —— 回合发起（SSE）/ 中断', () => {
         sessionId: 'sess-1',
         content: '请帮我写代码',
         mode: 'code',
-        model: 'Jereh-Kimi-K2.6',
+        model: 'claude-sonnet-4-5',
         providerId: 'anthropic-1',
       },
       res as never,
@@ -86,7 +86,7 @@ describe('ChatController —— 回合发起（SSE）/ 中断', () => {
       sessionId: 'sess-1',
       content: '请帮我写代码',
       mode: 'code',
-      model: 'Jereh-Kimi-K2.6',
+      model: 'claude-sonnet-4-5',
       providerId: 'anthropic-1',
     });
 

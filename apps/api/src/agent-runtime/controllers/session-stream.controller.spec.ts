@@ -110,7 +110,7 @@ describe('SessionStreamController —— POST /api/sessions/stream 新建 + 首�
     await controller.createAndStream(
       {
         content: '请帮我写代码',
-        model: 'Jereh-Kimi-K2.6',
+        model: 'claude-sonnet-4-5',
         providerId: 'anthropic-1',
         mode: 'plan' as never,
         thinking: { type: 'enabled', budgetTokens: 2048 },
@@ -152,7 +152,7 @@ describe('SessionStreamController —— POST /api/sessions/stream 新建 + 首�
       sessionId: 'new-sess-1',
       content: '请帮我写代码',
       mode: 'plan',
-      model: 'Jereh-Kimi-K2.6',
+      model: 'claude-sonnet-4-5',
       providerId: 'anthropic-1',
       thinking: { type: 'enabled', budgetTokens: 2048 },
       context1m: true,
@@ -466,7 +466,7 @@ describe('SessionStreamController —— POST /api/sessions/:id/turn 发消息�
     // sendMessage 必须在 events 流未结束前就 resolve（立即返回受理确认）。
     const ack = await controller.sendMessage('sess-now', {
       content: '第二句',
-      model: 'Jereh-Kimi-K2.6',
+      model: 'claude-sonnet-4-5',
       providerId: 'anthropic-1',
     });
 
@@ -477,7 +477,7 @@ describe('SessionStreamController —— POST /api/sessions/:id/turn 发消息�
     const passed = startSpy.mock.calls[0]![0]!;
     expect(passed.sessionId).toBe('sess-now');
     expect(passed.content).toBe('第二句');
-    expect(passed.model).toBe('Jereh-Kimi-K2.6');
+    expect(passed.model).toBe('claude-sonnet-4-5');
     expect(passed.providerId).toBe('anthropic-1');
     // mode 缺省透传 'code'（对齐 CreateStream 默认；反假数据：未传字段不预填）。
     expect(passed.mode).toBe('code');

@@ -16,14 +16,14 @@
 # 【前置条件】
 #   - apps/api 已 build（dist/main.js 存在）；若改过源码先 `npm run typecheck`（会增量出 dist）。
 #   - apps/api/.env 已配 ANTHROPIC_BASE_URL=https://litellm.jereh.cn、ANTHROPIC_AUTH_TOKEN=<真实值>。
-#     【模型名注意】.env 默认 ANTHROPIC_MODEL=Jereh-Kimi-K2.6 经验证【当前 litellm 网关不认】
-#     （/v1/models 列表里实际是 JerehW-kimi-k2.6，大小写敏感；详见 deferred-work.md accept-9 条目）。
-#     故本脚本默认用 MODEL_OVERRIDE 覆盖为有效名（见下方变量），不改 .env 文件本身。
+#     【模型名注意】.env 默认 ANTHROPIC_MODEL=claude-sonnet-4-5（accept-9 resolution：该名经 Claude
+#     Agent SDK/claude CLI 能正确路由；'Jereh-*' 前缀名虽在网关 /v1/models 列表内，但 SDK 报模型不存在）。
+#     本脚本默认用 MODEL_OVERRIDE 与之一致（见下方变量）。
 #
 # 【已知阻塞（脚本会探测并如实报告，不卡死）】
-#   1. SDK↔litellm 模型名协商：即便覆盖成 litellm /v1/models 列出的有效名，Claude Agent SDK
-#      经 /v1/messages 仍报「模型不存在」（直接 curl /v1/messages 同名却能成功）——属 SDK 与网关的
-#      anthropic 协议路由层兼容问题，非本 epic 代码问题（详见 deferred-work.md）。
+#   1. （已解决，accept-9）原 SDK↔litellm 模型名协商阻塞：根因是用了 CLI 不识别的 'Jereh-*' 前缀
+#      模型名。改用网关别名 'claude-sonnet-4-5'（CLI 已知模型族名）后，SDK query() 能正确路由并
+#      返回真实正文。详见 deferred-work.md accept-9 条目。
 #   （路由遮蔽阻塞已解决：accept-6 改独立路径 POST /api/sessions/:id/turn，不再与 C1 的
 #    POST /api/sessions/:id/messages 撞路径。）
 #
@@ -31,7 +31,7 @@
 #   bash apps/api/scripts/e2e-smoke.sh
 #   可选环境变量：
 #     PORT=3001                  服务端口（默认 3001）
-#     MODEL_OVERRIDE=JerehW-kimi-k2.6  覆盖 *_MODEL（默认 JerehW-kimi-k2.6）
+#     MODEL_OVERRIDE=claude-sonnet-4-5  覆盖 *_MODEL（默认 claude-sonnet-4-5）
 #     KEEP_SERVER=1              跑完不杀服务（便于人工接着双终端观察）
 #
 # 退出码：0=全部自动项通过；1=有项失败（详见 stdout 报告）。
@@ -42,7 +42,7 @@ set -u
 PORT="${PORT:-3001}"
 HOST="127.0.0.1"
 BASE="http://${HOST}:${PORT}"
-MODEL_OVERRIDE="${MODEL_OVERRIDE:-JerehW-kimi-k2.6}"
+MODEL_OVERRIDE="${MODEL_OVERRIDE:-claude-sonnet-4-5}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 API_DIR="$(cd "${HERE}/.." && pwd)"   # apps/api
 ENV_FILE="${API_DIR}/.env"

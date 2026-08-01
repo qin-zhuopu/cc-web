@@ -22,3 +22,9 @@ Thumbs.db
 .bmad-loop/runs/
 .bmad-loop/cache/
 .bmad-loop/policy.toml
+# 运行时产物（accept e2e-smoke / NestJS 服务运行产生，不入库）
+apps/api/codepilot.db
+apps/api/codepilot.db-shm
+apps/api/codepilot.db-wal
+apps/api/event-logs/
+apps/api/dist/

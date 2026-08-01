@@ -1,0 +1,194 @@
+# Epic C2-6-native-codex · NativeRuntimeAdapter + CodexRuntimeAdapter + 跨 Runtime 故障隔离 —— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md（同 epic-c2-6 / epic-c2-7 风格）
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：先 EventMapper（可纯表驱动测、零进程/网络）→ RuntimeAdapter（依赖 mapper）→ Router 注册/故障隔离（依赖三适配器）。
+#   Native：CAP-N1 mapper → CAP-N2 adapter（两条先 Native，因其结构最接近 ClaudeSdk 范式、风险低）。
+#   Codex：CAP-N5 mapper → CAP-N4 fatal config（stderr 监听可独立测）→ CAP-N3 进程隔离（依赖 manager，最重）。
+#   最后 CAP-N6 跨 Runtime 故障隔离（依赖三适配器同注册）。
+# 无 status 字段（进度追踪走 sprint-status.yaml；这 5 条目前在 deferred 列，落地后由 sprint-status 推进）。
+# 本 epic 全部产物在 apps/api（框架层，可 import node:child_process / fetch / codex SDK）；核心包 packages/core 仍零框架、绝不被污染。
+# RuntimeKind 枚举（domain/runtime/runtime-kind.ts 与 ports/runtime-kind.ts 两份字面量一致）已含 CLAUDE_SDK/NATIVE/CODEX 三值——本 epic 不扩展核心枚举。
+# 【测试策略】全故事用录制样本 + mock fetch / mock child_process 做纯单元/表驱动测（进 npm run test 门禁，无真实网络/进程）；
+#   连真 Native provider / 真 codex binary 的集成验证单独人在场跑，不进默认门禁。
+# 【复用铁律】复用 c2-6-1 ClaudeSdkRuntimeAdapter/ClaudeSdkEventMapper 范式、c2-3 EventMapper+14 类事件+dropUnknownEvent、c2-1 AgentRuntimePort/TurnRef、
+#   c2-5 interrupt 权威状态语义、c2-6-6 RuntimeRouter 路由骨架；绝不重写已交付产物。
+- id: "c2-6-2-native"
+  title: 实现 NativeSseEventMapper（Native SSE 帧 → AgentStreamEvent 归一）
+  description: >-
+    实现核心 EventMapper 契约的 Native 侧具体归一：Native HTTP provider 的 SSE 帧（data: {json}）逐帧映射为核心 14 类 AgentStreamEvent；
+    result/done 的 usage 只投影上报值（AC-9）；未知帧/非 JSON/空 data → null 降级（AC-8）；跨 Runtime 同语义事件结构与 ClaudeSdk 等价（AC-7）。详见 SPEC.md 的 CAP-N1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    先读 architecture §7.2（NativeRuntimeAdapter + NativeSseEventMapper）、§3.5（14 类 AgentStreamEvent 语义，注意核心 text=累积全文 见 c2-2 apply）、
+      _bmad-output/implementation-artifacts/epic-c2-6-native-codex/SPEC.md CAP-N1、
+      packages/core 里 event-mapper 契约（ports/driven/event-mapper.ts，含 dropUnknownEvent）、agent-stream-event.ts（14 类联合+值对象）、event-factory.ts（构造工厂）、result-projection.ts（token 投影）。
+    对照 apps/api/src/agent-runtime/adapters/claude-sdk-event-mapper.ts（c2-6-1a 已交付的范式）学结构——本 mapper 同样 implements 核心 EventMapper，
+      同样把「一条原始事件可能展开 0..N 个核心事件」的张力按 c2-6-1a 决策处理（主方法 mapFrame 返回 AgentStreamEvent[]；mapEvent 委派、恰好 1 个才返回）。
+    新建 apps/api/src/agent-runtime/adapters/native-sse-event-mapper.ts：class NativeSseEventMapper implements EventMapper（import type 核心契约/类型；值 import dropUnknownEvent/构造工厂/type guard 复用，绝不重定义 14 类联合）。
+    SSE 帧约定：`data: {json}\n\n`（含可能的 `event:` 行；本 epic 先支持纯 `data:` 行）。json 含判别字段——常见 Native provider 用 `type` 或 `event`：
+      文本增量（type=text/delta/content_block_delta 等）→ text 事件（注意核心 text 是累积全文；若 Native 逐字增量，mapper 需自持累积态产出全文，或按帧产出由调用方累积——
+      决策点：照 ClaudeSdkEventMapper「完整消息作为内容真相源」的精神，若 Native 帧=完整块则直接产出；若逐字增量则在 mapper 内累积成全文。读 SPEC/架构确认 Native 帧语义后落定，不臆造）。
+      推理/thinking → thinking 事件（delta）；tool_use/tool_call → tool_use；tool_result/function_call_output → tool_result；status → status；
+      done/result/end 含 usage → result 事件（tokenUsage 经 result-projection/projectResultTokenUsage 只投影上报值、无则省略绝不填 0，AC-9）；
+      error → error 事件（error 字段若已是 ClassifiedError 原样、否则可经 ErrorClassifier 包装——但 mapper 应保持纯映射，errorClassifier 由 adapter 注入，mapper 内若需分类则构造注入，见 ClaudeSdk 侧 mapper 不注入 classifier 的范式，倾向 mapper 不分类只识别 error 形状产 {type:'error', error:...} 由 adapter 预先分类后塞入——读 c2-6-1a 确认）；
+      permission 请求 → permission_request；file 变更（若有）→ file_changed。
+    非 JSON data / 空对象 / 未识别 type → 返回 null（mapFrame 返回空数组；mapEvent 返回 dropUnknownEvent()，不抛不伪造，AC-8）。
+    新建 native-sse-event-mapper.test.ts：表驱动，用录制的 SSE 帧样本字符串（内联常量，无真实网络）断言各类型帧归一结构正确、
+      result usage 有上报才带/无则省略、未知帧→null、跨 Runtime 同语义（tool_result 带 media 等）结构与 ClaudeSdk 侧等价（AC-7）。
+    边界：本文件在 apps/api 可 import 必要工具（如 SSE 行解析纯函数），但不引入 SDK；绝不把 fetch/ReadableStream 细节加进 packages/core（mapper 只吃已解析的 JSON）。verbatimModuleSyntax：import type + .js。
+    不改 packages/core、不改 RuntimeRouter、不建 AgentRuntimeModule（DI 接线在 c2-6-2-adapter 故事统一处理）。不跑 npm run test（合并阶段统一跑）。报告改/建文件。
+- id: "c2-6-2-adapter"
+  title: 实现 NativeRuntimeAdapter（封装 HTTP SSE 流 + AbortController 中断 + late-unregister no-op）
+  description: >-
+    实现 AgentRuntimePort：run 用 fetch 发起 Native provider 的 SSE 流（注入 auth/endpoint、接 abortSignal）以 streamId 注册句柄、产出经 NativeSseEventMapper 归一的 AgentStreamEvent 流；
+    interrupt 调 abortController.abort + 读响应权威状态返回并注销句柄；forceKillTurn 强制关 reader；late-unregister（旧 streamId）no-op；availability 非_spawn 探测。详见 SPEC.md 的 CAP-N2。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7.2、SPEC CAP-N2、packages/core 的 agent-runtime-port.ts（AgentRuntimePort/RuntimeRunRequest/TurnRef/AbortSignalLike/ResolvedProviderView）。
+      依赖 c2-6-2-native 的 NativeSseEventMapper。对照 apps/api/src/agent-runtime/adapters/claude-sdk-runtime-adapter.ts（c2-6-1b 已交付的范式）学结构——
+      本 adapter 同样 implements AgentRuntimePort，同样有「streamId → 句柄 Map + late-unregister no-op（AC-6）」结构，只是把 SDK Query 换成 fetch SSE 流。
+    新建 apps/api/src/agent-runtime/adapters/native-runtime-adapter.ts：class NativeRuntimeAdapter implements AgentRuntimePort（import type 核心端口）。
+      构造注入 NativeSseEventMapper + SK.ErrorClassifier + 可选 fetchFn（缺省用全局 fetch，便于单测注入 mock）。
+      - run(request): 把 promptView/content/options 转成 provider 协议 body（JSON）；从 request.resolvedProvider 取 endpoint + auth（header），注入到 fetch；
+        const abort = new AbortController(); 把 request.abortSignal（AbortSignalLike）接到 abort（addEventListener('abort') → abort.abort()，对齐 ClaudeSdk 侧 onCoreAbort）；
+        const response = await fetchFn(endpoint, { method:'POST', headers:{'content-type':'application/json', ...authHeaders}, body, signal: abort.signal });
+        以 streamId 注册 { response, abort, reader: response.body.getReader() } 进内部 Map handles；
+        产出 async generator：循环 reader.read() 拿 chunk → 按 SSE 行协议解析（\n\n 分帧、data: 前缀剥离）→ 逐帧过 mapper.mapEvent → 非 null 才 yield（已归一 AgentStreamEvent）。
+        fetch 抛错 / response 非 2xx → 经 ErrorClassifier 归一成 error 事件 yield（不静默、不停在 active，配合 c2-5 兜底），再结束。
+        finally：reader.cancel().catch(()=>{}) + 注销句柄（校验归属）+ removeEventListener。
+      - interrupt(turnRef): 查 handles；undefined → 返回 null（幂等 no-op）。abortController.abort()；尝试读响应权威状态（若 provider 在响应 header/body/trailer 暴露 runtime_status——读架构确认 Native provider 是否暴露，无则直接返回 null 交核心 force-abort 兜底，勿臆造）；
+        关闭并注销该 streamId 句柄。
+      - forceKillTurn(turnRef): 查 handles；undefined → return。abort + reader.cancel()（不抛）；注销句柄（校验归属）。
+      - availability(): 非 spawn 探测——检查 resolvedProvider 配置完整性（endpoint/auth 非空）。配置缺失 → unavailable + reason（不回显 token）；齐全 → ready。
+        【反假数据】不发起真实 HTTP 请求做探活（那是集成验证，非门禁）；配置探不到标 unavailable，绝不显假 ready。
+      - resolvePermission(turnRef, decision): Native provider 若支持权限决议回传则转发（经 streamId 定位在途回合、把决议写入协议约定的通道）；不支持则缓存保留决议不丢弃（对齐 ClaudeSdk 侧 permissionSink 占位精神，c2-7 CAP-2）。
+      【late-unregister no-op，AC-6】unregister(streamId, handleRef) 校验 Map 里该 streamId 对应的正是同一个 handle 引用才删，否则 no-op（对齐 ClaudeSdk 侧 unregister）。
+    新建 native-runtime-adapter.test.ts：用 mock fetchFn（返回可控假 ReadableStream 注入 SSE 帧序列的 Response）+ 真 mapper（或 spy mapper），不打真网络。断言：
+      run 注册句柄 + 产出归一事件流（断言 fetch 收到的 url/headers/body 含正确 endpoint/auth/content）；
+      interrupt 调 abort + 返回权威状态（或 null）+ 注销句柄；forceKillTurn abort + reader.cancel；
+      late-unregister 旧 streamId no-op、不影响新 turn 句柄（AC-6）；
+      fetch 抛错 → 产 error 事件（不停在 active）；非 2xx → 产 error 事件。
+    边界：apps/api 可用全局 fetch（Node 18+）或注入 fetchFn；优先不新增 HTTP 依赖。SSE 行解析写成纯函数（可放 mapper 同目录或 adapter 内私有）。绝不污染 packages/core。
+      import type + .js；术语中文；vitest 同目录 *.test.ts。不改 RuntimeRouter（注册在 c2-6-7-native-codex-fault-isolation 故事统一处理，或在 AgentRuntimeModule useFactory 追加——见该故事）。不跑 npm run test。报告改/建文件。
+- id: "c2-6-5-codex-mapper"
+  title: 实现 CodexEventMapper（codex JSON-RPC 通知 → AgentStreamEvent 归一，含 file_changed）
+  description: >-
+    实现核心 EventMapper 契约的 Codex 侧具体归一：codex app-server 的 JSON-RPC 通知（item lifecycle / fs.changed / auto-review / usage 等）归一成核心 14 类 AgentStreamEvent；
+    fs.changed → file_changed；result usage 只投影上报值（AC-9）；未知通知 → null 降级（AC-8）；跨 Runtime 同语义事件结构与 ClaudeSdk/Native 等价（AC-7）。详见 SPEC.md 的 CAP-N5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7.3（CodexEventMapper：JSON-RPC 通知 item lifecycle / fs.changed / auto-review → AgentStreamEvent）、§3.5、SPEC CAP-N5、
+      packages/core event-mapper.ts + agent-stream-event.ts（确认 file_changed 事件形状 { type:'file_changed', paths: string[] }）、event-factory.ts、result-projection.ts。
+      对照 claude-sdk-event-mapper.ts（c2-6-1a 范式）学结构。依赖此 mapper 的 c2-6-3-codex-adapter 在后。
+    新建 apps/api/src/agent-runtime/adapters/codex/codex-event-mapper.ts：class CodexEventMapper implements EventMapper（import type 核心契约/类型；值 import dropUnknownEvent/工厂/投影复用）。
+      主方法 mapNotification(raw): AgentStreamEvent[]（一条 JSON-RPC 通知可能含多个 item 变更，展开 0..N）；mapEvent 委派、恰好 1 个才返回，否则 dropUnknownEvent()。
+      codex JSON-RPC 通知约定（按 architecture §7.3 描述，具体字段名读 codex app-server 协议确认——若文档不全，按已知 codex 协议常见形状落，标注待集成验证校正）：
+      - item.created/updated/completed：item 类型分发——
+        message_block（文本）→ text 事件（累积全文，同 ClaudeSdk 决策；若 codex 增量则在 mapper 内累积成全文）；
+        reasoning（思维链）→ thinking 事件（delta）；
+        function_call（工具调用）→ tool_use 事件（ToolUseInfo：id/name/input）；
+        function_call_output（工具输出）→ tool_result 事件（ToolResultInfo：toolUseId/content/isError）；
+        其它 item 类型 → null。
+      - fs.changed（文件变更通知，paths 数组）→ file_changed 事件（{ type:'file_changed', paths }）。
+      - auto-review / status 类通知 → status 事件（若含可读文本）或 null。
+      - 终止 + usage（如 turn.completed 含 usage）→ result 事件（tokenUsage 经 projectResultTokenUsage 只投影上报值、无则省略绝不填 0，AC-9）。
+      - 权限请求（若 codex 协议有）→ permission_request。
+      - error 通知 → error 事件（识别 error 形状产 {type:'error', error}，分类由 adapter 注入的 ErrorClassifier 预处理后塞入，或 mapper 只识别不分类——对齐 ClaudeSdk 侧 mapper 决策，倾向后者）。
+      非 JSON-RPC 通知 / 非 object / method 未识别 / params 缺失 → 返回空数组（mapEvent → null，不抛不伪造，AC-8）。
+    新建 codex-event-mapper.test.ts：表驱动，用录制的 JSON-RPC 通知样本（内联常量，无真进程）断言各通知归一结构正确、
+      fs.changed → file_changed（paths 正确）、usage 有上报才带/无则省略、未知通知→null、跨 Runtime 同语义事件结构（tool_result 带 media 等）与 ClaudeSdk/Native 等价（AC-7）。
+    边界：mapper 只吃已解析的 JSON-RPC notification object（不解析 stdio 帧——那是 CodexAppServerManager 的职责）；绝不把 codex SDK/child_process import 加进 packages/core。
+      import type + .js；术语中文。不改 packages/core、不改 RuntimeRouter。不跑 npm run test。报告改/建文件。
+- id: "c2-6-4-codex-fatal-config"
+  title: 实现 Codex fatal config fail-fast（stderr 签名命中 → fireClose + SIGKILL，不等 30s linger）
+  description: >-
+    在 CodexAppServerManager 落 stderr 监听 + fatal config 签名表 + fireClose 路径：fatal config stderr（Failed to deserialize overridden config / unknown variant+config 上下文）→ 立即 SIGKILL 杀子进程、置 failed、拒绝后续 acquire、pending RPC 归 ClassifiedError；
+    非 fatal stderr 只透传 RuntimeLog。绝不等 30s linger（P0.2 / NFR-4）。详见 SPEC.md 的 CAP-N4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7.3（CodexAppServerManager：fatal config stderr 快失败 / 僵死 SIGKILL / onClose 拒 pending RPC）、§10（AC-10 测试策略）、SPEC CAP-N4、
+      packages/core 的 SK ErrorClassifier（PROCESS/CONFIG 类，确认 ErrorCode 有对应类——若无 CONFIG 用 PROCESS，勿臆造枚举）。
+      此故事是 c2-6-3-codex-adapter 的前置（CodexAppServerManager 的子能力，可独立测）。
+    新建 apps/api/src/agent-runtime/adapters/codex/codex-app-server-manager.ts（若 c2-6-3 已先行建文件则在其内补；本故事按「先建 manager 骨架 + fatal config」处理，进程隔离全貌在 c2-6-3 补）：
+      class CodexAppServerManager。
+      - fatal 签名表（内联常量数组）：['Failed to deserialize overridden config', 'unknown variant']（按 architecture §7.3 列举；可加注释标注权威来源是 codex 已知错误，未来升级走 correct-course）。
+        注意 'unknown variant' 需配 config 上下文（避免误杀非 config 的 unknown variant）——签名匹配可加「同时含 config 关键字」的与条件，或采用正则，单测覆盖命中与不命中的边界。
+      - spawn 后挂 child.stderr 监听（按行缓冲）：每行 stderr 匹配 fatal 签名表 → 立即调用 fireClose(reason)。
+      - fireClose(reason)：同步级——proc.kill('SIGKILL')（不抛；已退出则 no-op）；置 this.failed = reason；拒绝所有 pending RPC（每个 reject 一个 ClassifiedError，经 ErrorClassifier.classify 包装 PROCESS/CONFIG）；
+        标记 manager unavailable。绝不等待 linger / setTimeout。
+      - acquire()：若 this.failed 非空 → 直接返回 unavailable（或抛 ClassifiedError，按 adapter 调用约定）；不重复 spawn。
+      - 非 fatal stderr 行：透传 RuntimeLog（source=c2.runtime.codex，debug 级），不触发 fireClose。
+    新建 codex-fatal-config.test.ts（或 codex-app-server-manager.test.ts 的 fatal config describe 块）：注入 mock child_process.spawn（返回可控假 ChildProcess，stderr 是 EventEmitter/Readable）。
+      断言：
+      (a) fatal config stderr 行触发 fireClose：proc.kill('SIGKILL') 被调、this.failed 置位、pending RPC 全部 reject 成 ClassifiedError、后续 acquire 返回 unavailable；
+          且【耗时断言】从 stderr emit 到 fireClose 完成是同步/微任务级（用 fake timers 或 await Promise.resolve() 后即断言，不推进 30s）—— AC-10 核心。
+      (b) 非 fatal stderr 行（如普通 warning/info）不触发 fireClose（proc.kill 未被调、failed 仍空、stderr 行被 RuntimeLog 记录）。
+      (c) 签名边界：近似但非 fatal 的字符串（如 'unknown variant' 但无 config 上下文，若签名要求双条件）不触发；命中字符串触发。
+    边界：本文件在 apps/api 可用 node:child_process 类型 + SIGKILL；绝不污染 packages/core。import type + .js；术语中文。
+      不改 packages/core、不改 RuntimeRouter。不跑 npm run test。报告改/建文件 + fatal 签名表内容。
+- id: "c2-6-3-codex-adapter"
+  title: 实现 CodexRuntimeAdapter 进程隔离（binary 发现 / spawn / thread-turn 中断 / 僵死退出 / dispose）
+  description: >-
+    实现 AgentRuntimePort，封装 CodexAppServerManager：run 经 acquire 拿子进程句柄、开 thread/turn、驱动 JSON-RPC、经 CodexEventMapper 归一产出事件流；
+    interrupt 关 thread/turn（防残留）；forceKillTurn 强制关 turn；proc exit 归 PROCESS 错误、onClose 拒 pending RPC；dispose 优雅关闭避免 orphan；
+    binary 发现多候选选最新、Windows shim 经 cmd.exe。进程复杂度全锁在此，对外只吐归一事件 + 权威状态。详见 SPEC.md 的 CAP-N3。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7.3（CodexRuntimeAdapter + CodexAppServerManager 全貌：binary 发现 / spawn / fatal config / 僵死 / 中断关 turn / dispose）、§5.1（AgentRuntimePort 契约）、
+      SPEC CAP-N3、packages/core agent-runtime-port.ts。依赖 c2-6-5-codex-mapper（CodexEventMapper）与 c2-6-4-codex-fatal-config（CodexAppServerManager 骨架 + fatal config）。
+      对照 claude-sdk-runtime-adapter.ts（c2-6-1b 范式）学「句柄 Map + late-unregister no-op + abort 注入 + error 归一」结构。
+    在 apps/api/src/agent-runtime/adapters/codex/ 下补齐（c2-6-4 已建 manager 骨架）：
+      - codex-binary-resolver.ts（或 manager 内私有）：binary 发现——PATH 遍历（which 风格，用 process.env.PATH 分隔）+ macOS bundle 路径（/Applications/Codex.app/...）；
+        多候选探 `codex --version`（用 child_process.execSync 或 spawn 同步收集），按 semver/字符串排序选最新；Windows 检测 .cmd/.bat shim。返回 { path, version } 或 null。
+      - codex-app-server-manager.ts 续：补 spawn（Windows shim 经 cmd.exe /d /s /c）、proc.once('exit') → 归 ErrorCode.PROCESS（process_died）、onClose 拒所有 pending RPC、dispose（app exit 时优雅关闭，发约定的 shutdown RPC 或 SIGTERM 后 SIGKILL 兜底，避免 orphan）。
+      - codex-runtime-adapter.ts：class CodexRuntimeAdapter implements AgentRuntimePort（import type 核心端口）。
+        构造注入 CodexAppServerManager（单例/共享，对齐 architecture §7.3 manager 复用）+ CodexEventMapper + SK.ErrorClassifier + 可选 spawn 注入（便于单测）。
+        - run(request): const handle = await manager.acquire()（若 manager failed/unavailable → 经 ErrorClassifier 归 ClassifiedError 产 error 事件 yield 后结束，不卡死）；
+          开 thread（handle.openThread / JSON-RPC）→ 开 turn → 以 streamId 注册 { handle, threadId, turnId, abort } 进 Map；
+          把 request（promptView/content/options）转成 codex JSON-RPC 入参；驱动 RPC，把返回的 JSON-RPC 通知流逐条过 mapper.mapNotification → 0..N 个归一事件 yield；
+          RPC 抛错 / stream 中断 → ErrorClassifier 归 error 事件 yield；finally：关 turn/thread（若未关）+ 注销句柄（校验归属）。
+        - interrupt(turnRef): 查 handles；undefined → null。调 handle.closeThread/turn（codex 协议约定的中断 RPC，关闭对应 thread/turn 防残留，FR-3.5）；返回权威状态（codex runtime_status，如 'interrupted'/'idle'；无则 null 交 force-abort 兜底）；注销句柄。
+        - forceKillTurn(turnRef): 查 handles；undefined → return。强制关 turn（同步、不抛）；注销句柄。
+        - availability(): 非 spawn 探测——经 codex-binary-resolver 探 binary 是否可发现 + 版本（探 `--version` 算「非 spawn」边界——architecture §3.6 说「Codex 探 binary/版本，不启进程」，但 `--version` 实际会启短命进程；
+          决策：探 binary 存在性（PATH/bundle 路径检查，不启进程）落 ready/unavailable，版本字段若已缓存则带、否则省略；真版本探测留集成验证。读架构 §3.6 确认「不启进程」严格度，倾向「只查路径不 spawn」）。反假数据：探不到 → unavailable + reason。
+        - resolvePermission(turnRef, decision): codex 若支持权限决议则经 JSON-RPC 转发；不支持则缓存保留。
+        【late-unregister no-op，AC-6】unregister 校验 Map 里 streamId 对应的 handle 引用一致才删，否则 no-op。
+    新建 codex-runtime-adapter.test.ts（或同目录 *.test.ts）：用 mock CodexAppServerManager（返回可控 JSON-RPC 通知流的假 handle）+ mock binary resolver + 真 mapper（或 spy）。断言：
+      run 经 manager.acquire 拿句柄 + 开 thread/turn + 注册 + 产出归一事件流；
+      interrupt 关 thread/turn + 返回权威状态 + 注销；forceKillTurn 关 turn；
+      manager.acquire 返回 unavailable（failed）→ run 产 error 事件后结束（不卡死、不停 active）；
+      binary 发现多候选选最新（mock 多个候选 version，断言选最高）；Windows shim 经 cmd.exe（断言 spawn 参数含 /d /s /c + windowsHide）；
+      proc exit → manager 归 PROCESS 错误、onClose 拒 pending RPC（在 manager 测试已覆盖则在 adapter 测试补端到端断言）；
+      late-unregister no-op（AC-6）。
+    边界：apps/api 可用 node:child_process / node:stream；绝不污染 packages/core。import type + .js；术语中文。
+      不改 packages/core、不改 RuntimeRouter（注册在 c2-6-7 故事）。不跑 npm run test。报告改/建文件 + binary 发现策略摘要。
+- id: "c2-6-7-native-codex-fault-isolation"
+  title: 跨 Runtime 故障隔离 + 三适配器注册进 RuntimeRouter（AgentRuntimeModule useFactory 追加）
+  description: >-
+    固化 RuntimeRouter 在三 Runtime 同注册下的健壮性：某 Runtime 病只影响其自己路由、不污染另外两个 Runtime；availability 聚合不被单一病态 Runtime 拖垮（反假数据）。
+    并把 Native/Codex 适配器实例追加进 AgentRuntimeModule 的 RuntimeRouter useFactory（adapter map 加 NATIVE/CODEX 两项）。详见 SPEC.md 的 CAP-N6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    读 architecture §7（三适配器）/§8（DI 接线，RuntimeRouter 注入 adapter map）/§10（AC-10 测试策略）、SPEC CAP-N6、
+      apps/api/src/agent-runtime/runtime-router.ts（c2-6-6 已交付，看其 streamRuntimeKind Map + failFastStream + availability 聚合现状）、
+      apps/api/src/agent-runtime/runtime-router.test.ts（已有测试基线）、apps/api/src/agent-runtime/agent-runtime.module.ts（c2-7-4 已交付，看其 useFactory 怎么注入 { [CLAUDE_SDK]: claudeSdkAdapter }）。
+      依赖 c2-6-2-adapter（NativeRuntimeAdapter）与 c2-6-3-codex-adapter（CodexRuntimeAdapter）。
+    【1】扩展 runtime-router.test.ts 追加三 Runtime 同注册场景（不动 runtime-router.ts 实现——其路由骨架已支持任意数量 adapter，本期只验固化）：
+      注入三个假适配器（implements AgentRuntimePort），其中一个故意「病态」（run 抛错 / availability 返回 unavailable / acquire 抛错）。
+      断言：
+      (a) 路由到病态适配器的请求 → 产 error 事件或抛 ClassifiedError（不静默、不卡死），且【不影响】另外两个 Runtime 在途回合的事件流（spy 断言健康适配器的 run/interrupt 未被波及——
+          即给病态 adapter 发请求后，紧接着给健康 adapter 发请求，健康 adapter 仍正常产出事件、句柄独立）。
+      (b) availability 聚合：病态 adapter 返回 unavailable，健康 adapter 返回 ready——聚合时各自体现（不把整体拖成 unknown）。注意当前 runtime-router.ts 的 availability() 实现是「返回首个已注册的 availability」，
+          三适配器同注册下需调整或新增一个「按 RuntimeKind 聚合」的方法/返回结构——【决策点】读 runtime-router.ts 与 RuntimeController 现状：若 availability() 只返回单个，三适配器下需扩展为返回映射或优先返回 ready 的；
+          倾向不破坏既有 availability() 签名（RuntimeAvailability 单值），改为「优先返回 ready 的、全 unavailable 才 unavailable」的反假数据策略，并在 SPEC/注释记录。若需改签名走 correct-course。
+      (c) failFastStream 在三适配器同注册下不应被触发（只在真未注册/adapter map 缺失某 key 时触发）——断言三 key 都注册时 failFastStream 不出现。
+      可选端到端反例：Codex fatal config 场景下（mock codex adapter 模拟 manager failed），给 ClaudeSdk/Native adapter 发新回合仍成功（隔离佐证）。
+    【2】编辑 apps/api/src/agent-runtime/agent-runtime.module.ts 的 RuntimeRouter useFactory：在 adapter map 追加
+      { [RuntimeKind.CLAUDE_SDK]: claudeSdkAdapter, [RuntimeKind.NATIVE]: nativeAdapter, [RuntimeKind.CODEX]: codexAdapter }。
+      NativeRuntimeAdapter / CodexRuntimeAdapter 实例在此 useFactory 内构造（注入各自的 mapper + ErrorClassifier + 配置/binary resolver）。
+      不动 Module 的 imports/exports/controllers/forwardRef 结构（那属 c2-7 已交付，本故事只往 useFactory 塞实例）。
+      若构造 CodexAppServerManager 需跨 Module 共享单例，确认其 provider 注册位置（本 useFactory 内 new 或 Module 级 provider，倾向 Module 级 useFactory 单例避免重复 spawn）。
+    【3】若 availability() 签名/聚合策略有调整，同步更新 RuntimeController（apps/api/src/agent-runtime/controllers/runtime-controller.ts）的投影，保持反假数据（病态 Runtime 显 unavailable + reason，不显假 ready）。
+    边界：apps/api 框架层；import type 核心端口 + 值 import RuntimeKind；绝不污染 packages/core。import type + .js；术语中文。
+      【不破坏既有契约】RuntimeRouter 的 run/interrupt/forceKillTurn/availability/resolvePermission 签名不动（除非经 correct-course 扩展 availability 聚合——倾向不扩展，见决策点）。
+      不跑 npm run test。报告改/建文件 + availability 聚合策略决策结论。

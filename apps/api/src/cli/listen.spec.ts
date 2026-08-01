@@ -33,7 +33,7 @@ describe('parseArgs', () => {
       '--new',
       '首句',
       '--model',
-      'Jereh-Kimi-K2.6',
+      'claude-sonnet-4-5',
       '--provider',
       'anthropic-claude',
       '--mode',
@@ -46,7 +46,7 @@ describe('parseArgs', () => {
     expect(r).toEqual({
       mode: 'new',
       content: '首句',
-      model: 'Jereh-Kimi-K2.6',
+      model: 'claude-sonnet-4-5',
       providerId: 'anthropic-claude',
       mode2: 'plan',
       workingDirectory: '/tmp/proj',
@@ -343,7 +343,7 @@ describe('connectOnce / runReconnect —— 本地 stub server 冒烟', () => {
     const result = await connectOnce({
       baseUrl: stub.baseUrl,
       mode: 'new',
-      body: { content: '首句', model: 'Jereh-Kimi-K2.6', providerId: 'anthropic-claude' },
+      body: { content: '首句', model: 'claude-sonnet-4-5', providerId: 'anthropic-claude' },
       onFrame: (_f, text) => printed.push(text),
     });
 
@@ -431,7 +431,7 @@ describe('connectOnce / runReconnect —— 本地 stub server 冒烟', () => {
       {
         baseUrl,
         mode: 'new',
-        body: { content: '首句', model: 'Jereh-Kimi-K2.6', providerId: 'anthropic-claude' },
+        body: { content: '首句', model: 'claude-sonnet-4-5', providerId: 'anthropic-claude' },
         reconnectDelayMs: 0,
         maxReconnects: 1, // 第一轮 POST + 1 次重连 GET，共 2 次连接后退出
         onFrame: (_f, text) => printed.push(text),
