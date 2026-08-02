@@ -707,16 +707,13 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     return { create: vi.fn(async () => fakeSession('unused')) } as unknown as ManageSessionUseCase;
   }
 
-  it('旧流挂起时新 POST /turn → 两次均受理', async () => {
+  it('旧流挂起时新 POST /turn → 两次均受理，且文件日志无重复', async () => {
     const firstDeferred = new DeferredEvents();
     const secondDeferred = new DeferredEvents();
-    let callCount = 0;
     const startSpy = vi.fn(async (_input: StartStreamInput): Promise<StartStreamResult> => {
-      callCount++;
-      if (callCount === 1) {
-        return { streamId: 'stream-c8-1', events: firstDeferred.iterable() };
-      }
-      return { streamId: 'stream-c8-2', events: secondDeferred.iterable() };
+      return startSpy.mock.calls.length === 1
+        ? { streamId: 'stream-c8-1', events: firstDeferred.iterable() }
+        : { streamId: 'stream-c8-2', events: secondDeferred.iterable() };
     });
     const startStream: StartStreamUseCase = { start: startSpy };
     const controller = new SessionStreamController(unusedManageSession(), startStream, new SessionSseHub(), eventLog);
@@ -745,18 +742,22 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     await settleTicks();
 
     expect(startSpy.mock.calls.length).toBe(2);
+
+    // 文件日志无重复（两行、seq 1..2）。
+    await waitForLog(eventLog, 'sess-c8', 2);
+    const rows: Array<{ seq: number; event: AgentStreamEvent }> = [];
+    for await (const entry of eventLog.readAfter('sess-c8', 0)) rows.push(entry);
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => r.seq)).toEqual([1, 2]);
   });
 
   it('并发 turn 后挂载连接收到全部事件、seq 严格递增无重复', async () => {
     const firstDeferred = new DeferredEvents();
     const secondDeferred = new DeferredEvents();
-    let callCount = 0;
     const startSpy = vi.fn(async (_input: StartStreamInput): Promise<StartStreamResult> => {
-      callCount++;
-      if (callCount === 1) {
-        return { streamId: 'stream-c8-3', events: firstDeferred.iterable() };
-      }
-      return { streamId: 'stream-c8-4', events: secondDeferred.iterable() };
+      return startSpy.mock.calls.length === 1
+        ? { streamId: 'stream-c8-3', events: firstDeferred.iterable() }
+        : { streamId: 'stream-c8-4', events: secondDeferred.iterable() };
     });
     const startStream: StartStreamUseCase = { start: startSpy };
     const hub = new SessionSseHub();
@@ -766,7 +767,7 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     const conn = makeFakeSseRes();
     await controller.attachStream('sess-c8-seq', undefined, conn.res as never);
 
-    // 第一 turn——yield 一个 text，不结束。
+    // 先发第一 turn（只 push 一个 text、不 end，让 consumeInBackground 挂住在中途）。
     firstDeferred.push({ type: 'text', text: '第一句' });
     const ack1 = await controller.sendMessage('sess-c8-seq', {
       content: '第一句',
@@ -775,11 +776,7 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     });
     expect(ack1).toEqual({ accepted: true, streamId: 'stream-c8-3' });
 
-    // 第一句的 text 事件被 consumeInBackground 推出。
-    await waitForFrames(conn.frames, 1);
-    expect(conn.frames.length).toBe(1);
-
-    // 不等第一句结束，立刻发第二 turn。
+    // 不等第一句消费完（更别说结束），立刻发第二 turn——更激进的并发。
     const ack2 = await controller.sendMessage('sess-c8-seq', {
       content: '第二句',
       model: 'm',
@@ -787,8 +784,8 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     });
     expect(ack2).toEqual({ accepted: true, streamId: 'stream-c8-4' });
 
-    // 让出 tick，让第二 turn 的 consumeInBackground 启动并开始 for-await
-    //（deferred push 必须在迭代器「挂起等待 next()」之后进行，否则会被漏掉）。
+    // 让出 tick，让两个后台 consumer 都启动并挂起等待 next()，
+    // 此后 push 的事件才能被 flush 到消费者。
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     // 第一句再放后续事件后结束。
@@ -809,7 +806,13 @@ describe('SessionStreamController —— 并发 turn（CAP-8）', () => {
     // seq 严格递增 1..3。
     const seqs = conn.frames.map((f) => Number(/^id: (\d+)/m.exec(f)?.[1]));
     expect(seqs).toEqual([1, 2, 3]);
-    expect(new Set(seqs).size).toBe(3);
+
+    // 旁证：文件日志也恰好 3 行、seq 1..3 无重复。
+    await waitForLog(eventLog, 'sess-c8-seq', 3);
+    const rows: Array<{ seq: number; event: AgentStreamEvent }> = [];
+    for await (const entry of eventLog.readAfter('sess-c8-seq', 0)) rows.push(entry);
+    expect(rows.length).toBe(3);
+    expect(rows.map((r) => r.seq)).toEqual([1, 2, 3]);
   });
 });
 
@@ -1086,17 +1089,25 @@ async function waitForLog(
  * 手动控制 yield 时序的 deferred stub events。
  * push(event) 入队事件；调用方 async iterator 消费时逐个 yield。
  */
+/**
+ * 手动控制 yield 时序的 deferred stub events。
+ * push(event) 入队事件；调用方 async iterator 消费时逐个 yield。
+ * end() 标记结束；已排队事件先 flush，随后所有挂起的 next() 收到 done。
+ */
 class DeferredEvents {
   private queue: Array<IteratorResult<AgentStreamEvent>> = [];
   private resolveQueue: Array<(value: IteratorResult<AgentStreamEvent>) => void> = [];
   private done = false;
+  private consumed = false;
 
   push(event: AgentStreamEvent) {
+    if (this.done) throw new Error('DeferredEvents already ended');
     this.queue.push({ done: false as const, value: event });
     this.flush();
   }
 
   end() {
+    if (this.done) return; // 幂等 end
     this.done = true;
     this.flush();
     // 将 done: true 释放给所有仍在等待的 next()，防止挂住。
@@ -1118,6 +1129,8 @@ class DeferredEvents {
   }
 
   iterable(): AsyncIterable<AgentStreamEvent> {
+    if (this.consumed) throw new Error('DeferredEvents.iterable() already consumed');
+    this.consumed = true;
     const self = this;
     return {
       async *[Symbol.asyncIterator]() {

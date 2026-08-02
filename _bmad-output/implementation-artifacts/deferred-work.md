@@ -88,3 +88,11 @@
 - source_spec: `epic-c2-6/SPEC.md`
   summary: 【c2-6-7 · 能力已覆盖，标 done】c2-6-7「跨 Runtime 故障隔离」核心（任一已注册 Runtime 故障 fail-fast 不卡死核心、availability 反假数据）已在 c2-6-6 RuntimeRouter 落地：未注册 RuntimeKind → failFastStream 产出归一 error 事件（runtime-router.ts:121）、availability 聚合未注册标 unavailable（:99），测试覆盖未注册 fail-fast（UNAVAILABLE）+ interrupt 未知 streamId 幂等 + availability 反假数据（runtime-router.test.ts:135-160）。本期单 Runtime（CLAUDE_SDK）下该 fail-fast 语义已实现且有测试，标 done。
   evidence: runtime-router.ts failFastStream/availability + test:135-160 fail-fast 断言。多 Runtime 同注册下的隔离为预留语义（本期无第二 Runtime，逻辑无对象）。
+
+- source_spec: `spec-c2-concurrent-turn-integration-test.md`
+  summary: DeferredEvents 工厂未覆盖异常路径（error/throw），且 AsyncIterable 缺少标准 return() 清理协议。controller 因外部 abort 或 break mid-loop 时 pending Promise 可能泄漏。
+  evidence: CAP-8 对抗审查发现。异常流非 CAP-8 核心场景，但 DeferredEvents 作为通用夹具应补 error() 方法与 return()，供后续需要异常 trigger 的测试使用。
+
+- source_spec: `spec-c2-concurrent-turn-integration-test.md`
+  summary: CAP-8 缺失空流（zero-event 立即 end）、end() 时 consumer 尚未启动、三个以上连续并发 turn 的边界覆盖。
+  evidence: Edge Case Hunter 枚举。当前覆盖「挂起中发第二 turn + 双 consumer 同时等 next」中等并发；更极端边界（空流、超两流叠加）未覆盖，但核心 seq 原子性与单 active 约束已由核心层 start-stream.test.ts 保证。
