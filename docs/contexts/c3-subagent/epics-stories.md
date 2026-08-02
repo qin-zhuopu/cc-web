@@ -35,7 +35,7 @@ updated: 2026-07-30
 - **S1.5** 定义 `DependencyEdge`（workflowId/taskKey/dependsOn）+ `DependencyGraph` 校验函数签名。**AC**：DependencyEdge 是 LogicalRun 级属性，不用于隐式合并 attempt。（FR-1.5）
 - **S1.6** 定义 `SubagentEvent` 联合（activity/tool/permission/partial/terminal）+ `event-mapping` 契约签名。**AC**：五类事件结构完整，每个关联 attemptId。（FR-4.1）
 - **S1.7** 定义驱动端口（`SpawnSubagentUseCase`/`RetrySubagentUseCase`/`InterruptSubagentUseCase`/`QuerySubagentRunsUseCase`）与出站端口（`SubagentRunRepository`）+ `import type` 引用 `C2.AgentRuntimePort` / `C5.PermissionBrokerPort`。**AC**：`index.ts` 只导出端口与领域类型。（FR-5/6/7/8）
-- **S1.8** 建立禁用 import 静态扫描。**AC-17**：`packages/core/subagent/` 对 `@anthropic-ai/*`/`child_process`/`codex`/`better-sqlite3`/`@nestjs/*` 0 命中；额外断言无 import C2 `StreamPhase`。（NFR-1 / NFR-2）
+- **S1.8** 建立禁用 import 静态扫描。**AC-17**：`packages/core/subagent/` 对 `@anthropic-ai/*`/`child_process`/`better-sqlite3`/`@nestjs/*` 0 命中；额外断言无 import C2 `StreamPhase`。（NFR-1 / NFR-2）
 - **S1.9** 定义 C3 message-keys（`c3.*`，状态/错误/依赖/权限提示）。**AC**：用户可见文案经 key + `SK.TranslationPort`，错误文案 key 来自 `SK.ErrorClassifier.messageKey`。（NFR-8）
 
 ## E2 · RunPhase durable 状态机 + LogicalRun/Attempt 两层模型（领域不变量核心）
@@ -79,7 +79,7 @@ updated: 2026-07-30
 - **S6.4** 实现 queued Stop 取消：queued（等上游）child 被父 Stop → 组合 AbortSignal 命中 → 直接 `terminal(cancelled)`，**不等**依赖 deadline。**AC-14**：queued child 被 Stop → terminal(cancelled) 不等 deadline（组合 AbortSignal / dispatch_state）。（FR-6.3 / FR-5.5）
 - **S6.5** 实现 detach ≠ abort：renderer fetch 断开/页面切走只 detach，server 侧 Collector 继续消费+持久化，**不**触发 `AgentRuntimePort.interrupt`。**AC-7**（反例）：模拟 fetch 断开，spy 断言 Collector 继续、durable row 继续推进、`interrupt` 未被调（对比显式 Stop 才 abort）。（FR-3.3）
 - **S6.6** 实现进程重启 recovery（`TerminalReconciler.recover`）：经 `Repository.listStaleActiveRuns` 拿遗留 running/settling；**仅当**上一 owner 缺失/PID 已死才收口为 `terminal(failed, PROCESS process_restarted)`；owner 存活→不动；**schema/migration 初始化本身不执行运行态 recovery**。**AC-8**：遗留 running + owner PID 已死 → 收口 terminal；schema init 重复 → 不 recovery（对比 owner 存活不收口）。（FR-3.4）
-- **S6.7** 实现进程病隔离消费：Codex app-server 僵死/spawn 失败等锁在 C2 `CodexRuntimeAdapter` 内 fail-fast，C3 只消费归一后的 `ClassifiedError`，把对应 attempt 归 `terminal(failed, PROCESS)`，不卡死 logical run 生命周期。**AC**：进程病态归 terminal(failed, PROCESS)，logical run 不悬挂。（NFR-4）
+- **S6.7** 实现进程病隔离消费：任一 Runtime app-server 僵死/spawn 失败等锁在 C2 对应适配器内 fail-fast，C3 只消费归一后的 `ClassifiedError`，把对应 attempt 归 `terminal(failed, PROCESS)`，不卡死 logical run 生命周期。**AC**：进程病态归 terminal(failed, PROCESS)，logical run 不悬挂。（NFR-4）
 
 ## E7 · 权限中转 + Query + 持久化适配器 + 接线
 
@@ -89,7 +89,7 @@ updated: 2026-07-30
 - **S7.4** 实现 `getLogicalRun` / `listRunsBySession`：logical 聚合读取（最新 attempt + 全部 attempts + events）；UI 胶囊只有 details 返回有效 durable evidence 才显示 managed；缺失（404 等价）暂记 missing、transient 记 unknown，不永久轮询幽灵 id。**AC-18**（反例）：无 durable evidence → 不显示胶囊（不显示假 running）。（FR-8.1/8.3）
 - **S7.5** 实现 `SqliteSubagentRunRepository`（`apps/api` 适配器）：落 `subagent_runs`（logical_run_id/attempt/route/dispatch_state/状态列/dependencies_json/structured result/provenance/parent FK）与 `subagent_run_events`（typed lifecycle）。**AC**：`settleTerminalOnce` 用 `UPDATE ... WHERE phase != 'terminal'` 保证仅第一次生效；`checkpointPartial` 截断 64 KiB + `WHERE phase='running'`。（FR-8 / NFR-5）
 - **S7.6** 接线 `SubagentModule`（NestJS）：imports SharedKernelModule + AgentRuntimeModule（注入 C2.AgentRuntimePort）+ BridgeModule（注入 C5.PermissionBrokerPort）；provides/exports `SpawnSubagentUseCase` + `SubagentRunRepository`（供 UI/父会话侧消费）；controllers `SubagentController`（spawn SSE / retry / interrupt / runs 列表 / 详情）+ `SubagentPermissionController`（决议回传中转）。**AC**：C3 单向依赖 C2/C5/SK 端口，无实现级循环、无需 forwardRef（编排叶子）。（DI 章节 / NFR-3）
-- **S7.7** 静态扫描收口（NFR-1/AC-17）：`subagent/` 核心包禁用 import 扫描 0 命中；RunPhase 只经 Repository 落库、AI 调用/权限/持久化全经端口接口。**AC-17**：`@anthropic-ai/*`/`child_process`/`codex`/`better-sqlite3`/`@nestjs/*` 0 命中。（NFR-1）
+- **S7.7** 静态扫描收口（NFR-1/AC-17）：`subagent/` 核心包禁用 import 扫描 0 命中；RunPhase 只经 Repository 落库、AI 调用/权限/持久化全经端口接口。**AC-17**：`@anthropic-ai/*`/`child_process`/`better-sqlite3`/`@nestjs/*` 0 命中。（NFR-1）
 
 ---
 
