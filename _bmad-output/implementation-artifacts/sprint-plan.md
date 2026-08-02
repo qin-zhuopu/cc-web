@@ -53,8 +53,8 @@ status: 已与用户确认范围，待开工
 **做：** SK 全套 / C1 全套 / C2 核心 + 用例 + ClaudeSdkRuntimeAdapter / 验收链路（三件套接口 + 一式三份 + 补发 + CLI）。
 
 **本期延后（deferred，接口保留，将来加不改核心）：**
-- C2 的 **Native 运行时适配器**（story c2-6-2）。
-- C2 的 **Codex 运行时适配器**及其进程隔离/fail-fast/EventMapper（c2-6-3~6-5、6-7）。
+- C2 的**其他 AI agent 运行时适配器（未具名，预留扩展点）**（story c2-6-2）。
+- C2 的**未具名新协议适配器**及其进程隔离/fail-fast/EventMapper（c2-6-3~6-5、6-7）。
 - SK 的 **C7 试点消费验证**（sk-4-4，因 C7 本期不做）。
 
 **本期用 stub 顶替：**
@@ -105,7 +105,7 @@ status: 已与用户确认范围，待开工
 - **产出**：发起与中断用例全通（假出站端口），终态映射回 C1。
 
 ### S8 · C2 Claude 适配器 + 接线
-- C2 E6：**仅** ClaudeSdkRuntimeAdapter + ClaudeSdkEventMapper（含 resume 续接、句柄/lockId 归属、组合中断）+ RuntimeRouter（c2-6-1、6-6）。**Native/Codex 延后。**
+- C2 E6：**仅** ClaudeSdkRuntimeAdapter + ClaudeSdkEventMapper（含 resume 续接、句柄/lockId 归属、组合中断）+ RuntimeRouter（c2-6-1、6-6）。**其他 AI agent 运行时适配器（未具名，预留扩展点）延后。**
 - C2 E7：TitleGenerator + 权限事件中转 + AgentRuntimeModule 接线（两侧 forwardRef 解 C1↔C2 环）+ 终态→C1 StreamStatus 映射（c2-7-x）。
 - **产出**：真接 Claude SDK，能流式跑一轮、能停、能 resume 续接。**第二个可用里程碑：能真的跟 AI 流式对话。**
 

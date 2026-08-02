@@ -90,7 +90,7 @@ sources:
 
 - 不做前端 UI（sprint-plan §四）。
 - 不引入鉴权 / 会话令牌 / 访问控制（本期有意不做，见「安全事实」；跨机使用前的硬前置，属后续）。
-- 不实现 Native / Codex 运行时适配器（延后，sprint-plan §四）；本期 provider stub 只返回单个 Claude 配置。
+- 不实现其他 AI agent 运行时适配器（未具名，预留扩展点；延后见 sprint-plan §四）；本期 provider stub 只返回单个 Claude 配置。
 - 不实现真正的 C7 ProviderRepository（本期用最小 stub 顶替，sprint-plan §四）。
 - 不改 `packages/core` 任何核心逻辑/端口签名（如需走 correct-course）。
 - 不做文件事件日志的加密 / 轮转 / 清理 / 多进程并发写协调（本期单机单进程、明文本机）。

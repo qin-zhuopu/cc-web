@@ -48,7 +48,7 @@ epic-c2-1 已把地基铺好：`StreamPhase`/`canTransitionPhase`/`reconcilePhas
 
 ## Constraints
 
-- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、`codex` SDK，禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。聚合根取时一律经**构造注入的 `SK.Clock`**，不直调 `Date.now()`；id 经 `SK.IdGenerator` 或外部传入。
+- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、任何第三方 AI agent SDK（未具名），禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。聚合根取时一律经**构造注入的 `SK.Clock`**，不直调 `Date.now()`；id 经 `SK.IdGenerator` 或外部传入。
 - **`verbatimModuleSyntax` 已启用**：类型-only import 必须用 `import type`，模块说明符带 `.js` 扩展名（NodeNext 解析），否则 `tsc --build` 报错。本 epic 对 c2-1 的 `StreamPhase`/`canTransitionPhase`/`reconcilePhase`/`TerminalReason`/`TurnArtifacts`/`buildFinalContent`/`AgentStreamEvent` 及 SK 的 `ClassifiedError`/`Clock`/`IdGenerator` 的引用都须遵守。
 - **复用 c2-1 纯函数做唯一迁移判据，不重写规则**：四迁移方法内部一律调用 c2-1 的 `canTransitionPhase` 判定合法性，force-abort 收敛复用 `reconcilePhase`，终态产物投影复用 `buildFinalContent`，归因复用 `TerminalReason`——**不得**在聚合根内重新实现或改写这些规则；接口/类型签名以 architecture.md §3.2 为准，不增删改名，新增需求走 correct-course。
 - **phase 不落库、不与 C1 持久 StreamStatus 混用（NFR-2 / AC-15，架构铁律）**：`StreamPhase` 是实时内存态，聚合根不写任何持久层、不 import/建模 C1 的 `StreamStatus`（streaming/completed/interrupted/error）做实时判断。终态→C1 映射的实现属后续 epic，本 epic 聚合根只在内存维护 phase。
@@ -59,7 +59,7 @@ epic-c2-1 已把地基铺好：`StreamPhase`/`canTransitionPhase`/`reconcilePhas
 
 - 不实现 `StartStreamService`/`AbortStreamService`/`GenerateTitleService`/`StreamSessionRegistry` 等用例编排与 force-abort 先行的**编排代码**（属 epic-c2-4 StartStream / epic-c2-5 AbortStream）——本 epic 只落聚合根本身与其不变量，abort 反例回归用假 Runtime 直接驱动聚合根，不建完整 AbortStream 用例。
 - 不定义/实现 EventMapper 契约与未知事件降级规则（属 epic-c2-3）——`apply` 只消费**已归一**的 `AgentStreamEvent`。
-- 不接入真实 Runtime 适配器（`ClaudeSdkRuntimeAdapter`/`NativeRuntimeAdapter`/`CodexRuntimeAdapter`）与 SDK/进程/HTTP（属 epic-c2-6）。
+- 不接入真实 Runtime 适配器（`ClaudeSdkRuntimeAdapter` 及其他未具名预留扩展点的适配器）与 SDK/进程/HTTP（属 epic-c2-6）。
 - 不接入 NestJS DI（`AgentRuntimeModule`、`forwardRef`、Controller）与终态→C1 `StreamStatus` 映射的实现（属后续 epic）。
 
 ## Success signal

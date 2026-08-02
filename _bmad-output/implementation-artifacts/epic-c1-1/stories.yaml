@@ -12,7 +12,7 @@
   spec_checkpoint: false
   invoke_dev_with: >-
     只建模会话本体 10 字段（id/title/titleOrigin/status/mode/source/workingDirectory/projectName/
-    createdAt/updatedAt），运行时/Provider/Codex 字段（sdkSessionId/codexThreadId/runtimeStatus/
+    createdAt/updatedAt），运行时/Provider/其他运行时句柄字段（sdkSessionId/历史遗留句柄字段（已删）/runtimeStatus/
     providerId/contextSummary* 等）严禁进入 C1 领域模型（架构 §3.1 字段归属）。字段全 readonly。
     titleOrigin 字段引用 c1-1-4 的 TitleOrigin 类型。核心零框架 import；类型-only import 用
     import type + .js 扩展名。

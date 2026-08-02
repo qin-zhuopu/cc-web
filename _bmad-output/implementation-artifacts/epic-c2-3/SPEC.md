@@ -14,7 +14,7 @@ sources:
 
 ## Why
 
-C2（AgentRuntime）的招牌之一是把三种异构 Runtime（ClaudeCode SDK 消息 / Native SSE 帧 / Codex JSON-RPC 通知）的原生事件**归一**成一套统一事件模型，核心只消费归一后的事件，绝不感知任何 SDK/协议细节（PRD FR-4）。epic-c2-1 已把 14 类 `AgentStreamEvent` 判别联合与其值对象（`ToolUseInfo`/`ToolResultInfo`/`TokenUsage`/`ContextUsage`/`PermissionRequest`/`RateLimitInfo`）作为**纯类型**落地（`domain/event/agent-stream-event.ts`）；epic-c2-2 已让 `StreamSession` 聚合根 `apply(event)` 消费这些事件。
+C2（AgentRuntime）的招牌之一是把多种异构 Runtime（本期 ClaudeCode SDK 消息 / 其他预留扩展点协议的原生事件，未具名）的原生事件**归一**成一套统一事件模型，核心只消费归一后的事件，绝不感知任何 SDK/协议细节（PRD FR-4）。epic-c2-1 已把 14 类 `AgentStreamEvent` 判别联合与其值对象（`ToolUseInfo`/`ToolResultInfo`/`TokenUsage`/`ContextUsage`/`PermissionRequest`/`RateLimitInfo`）作为**纯类型**落地（`domain/event/agent-stream-event.ts`）；epic-c2-2 已让 `StreamSession` 聚合根 `apply(event)` 消费这些事件。
 
 但归一要真正发生，还缺三块**核心侧契约**（都在零框架核心内、都是纯类型/纯函数，具体 mapper 实现留给 c2-6 的适配器）：
 
@@ -32,7 +32,7 @@ C2（AgentRuntime）的招牌之一是把三种异构 Runtime（ClaudeCode SDK �
 
 - **CAP-2 · EventMapper 端口契约 + 未知原生事件降级不崩**
   - **intent:** 定义 `EventMapper` 契约——「某 Runtime 原生事件 → `AgentStreamEvent`（或无归一结果）」的映射端口/纯函数签名（可含纯函数骨架），并把「遇未识别原生事件」落成明确规则：**丢弃或包 raw（不伪造内容、不静默改变已识别事件语义），一律不抛**（AC-8）。契约本身是纯类型/纯函数，**不接任何 SDK**。
-  - **success:** 新增 `ports`/`domain` 侧的 `EventMapper` 契约（映射函数签名 + 未知事件降级的规约），单测用「未识别原生事件」样本断言：调用不抛、不产出伪造的已识别事件、不污染并发的合法事件归一结果（降级为「无归一结果 / 跳过」是核心侧安全路径）；契约对三 Runtime 均适用（结构与 architecture §3.5「text…file_changed 由 EventMapper 归一」一致）。**具体 mapper 实现（ClaudeSDK/Native/Codex）不在本 epic**（对应 PRD FR-4.2/4.3、AC-8，epics-stories S3.2）。
+  - **success:** 新增 `ports`/`domain` 侧的 `EventMapper` 契约（映射函数签名 + 未知事件降级的规约），单测用「未识别原生事件」样本断言：调用不抛、不产出伪造的已识别事件、不污染并发的合法事件归一结果（降级为「无归一结果 / 跳过」是核心侧安全路径）；契约对各 Runtime 均适用（结构与 architecture §3.5「text…file_changed 由 EventMapper 归一」一致）。**具体 mapper 实现（ClaudeSDK 及其他未具名预留扩展点）不在本 epic**（对应 PRD FR-4.2/4.3、AC-8，epics-stories S3.2）。
 
 - **CAP-3 · result 事件 token 投影（只存不算，无上报留空不填 0）**
   - **intent:** 明确 `result` 事件 `tokenUsage` 投影的构造/归一契约：仅当 Runtime **真实上报**时才携带 `TokenUsage`，未上报时字段整体省略——**绝不填 0、不估算**；契约保证「构造 result 事件」与「投影进聚合根」两侧都遵守 AC-9 反假数据纪律。
@@ -44,8 +44,8 @@ C2（AgentRuntime）的招牌之一是把三种异构 Runtime（ClaudeCode SDK �
 
 ## Constraints
 
-- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/src/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、`codex` SDK，禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。本 epic 全部产物为纯类型/纯函数契约，取时（如有）经注入的 `SK.Clock`，不直调系统时钟。
-- **EventMapper 是契约/纯函数，不接 SDK**：本 epic 只定义映射端口签名与纯函数骨架 + 未知事件降级规约；**绝不** import 或调用任何 Runtime SDK/协议客户端。三个具体 mapper（`ClaudeSdkEventMapper`/`NativeSseEventMapper`/`CodexEventMapper`）的实现属 c2-6 的适配器层，不在本 epic。
+- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/src/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、任何第三方 AI agent SDK（未具名），禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。本 epic 全部产物为纯类型/纯函数契约，取时（如有）经注入的 `SK.Clock`，不直调系统时钟。
+- **EventMapper 是契约/纯函数，不接 SDK**：本 epic 只定义映射端口签名与纯函数骨架 + 未知事件降级规约；**绝不** import 或调用任何 Runtime SDK/协议客户端。具体 mapper（`ClaudeSdkEventMapper` 及其他未具名预留扩展点的 mapper）的实现属 c2-6 的适配器层，不在本 epic。
 - **未知原生事件降级不抛**：EventMapper 遇未识别原生事件必须走明确降级路径（丢弃 / 包 raw），**一律不抛异常、不伪造已识别事件内容、不静默改变已识别事件语义**（AC-8）。当前 c2-1 的 14 类联合无 raw/unknown 载体，核心侧安全路径为「返回无归一结果（跳过/丢弃）」；若需新增 raw 载体则改动 c2-1 类型，须走 correct-course，不在本 epic 擅自扩联合。
 - **token 只存不算（AC-9 反假数据）**：`result` 事件的 `tokenUsage` 仅承载 Runtime 真实上报值，无上报时字段省略——绝不填 0、不估算、不在核心侧计算合计。`context_usage` 同理，无上报不发事件。
 - **phase_changed 核心产出**：`phase_changed` 只能由 C2 核心相位迁移产出，不来自 Runtime、不经 EventMapper 归一；EventMapper 契约的归一集合仅覆盖 text…file_changed（13 类）。
@@ -56,15 +56,15 @@ C2（AgentRuntime）的招牌之一是把三种异构 Runtime（ClaudeCode SDK �
 
 ## Non-goals
 
-- 不实现任何具体 Runtime 的 EventMapper（`ClaudeSdkEventMapper`/`NativeSseEventMapper`/`CodexEventMapper`）与其原生事件解析——属 epic-c2-6 的适配器层。
-- 不接入任何 SDK/进程/HTTP（`@anthropic-ai/*` / codex app-server / Native SSE `fetch`）——契约层零框架。
+- 不实现任何具体 Runtime 的 EventMapper（`ClaudeSdkEventMapper` 及其他未具名预留扩展点的 mapper）与其原生事件解析——属 epic-c2-6 的适配器层。
+- 不接入任何 SDK/进程/HTTP（`@anthropic-ai/*` / 任何第三方 AI agent app-server / 其他协议 `fetch`）——契约层零框架。
 - 不实现 `StartStreamService`/`AbortStreamService` 用例编排、force-abort 先行、reconcile、终态落 C1——分属 epic-c2-4（StartStream）/ epic-c2-5（AbortStream）。
 - 不接入 NestJS DI（`AgentRuntimeModule`、`forwardRef`、Controller）与终态→C1 `StreamStatus` 映射的实现。
 - 不新增/改写 c2-1 已定义的 14 类 `AgentStreamEvent` 联合成员与值对象接口（如需 raw/unknown 载体走 correct-course）。
 
 ## Success signal
 
-在 `packages/core` 内运行 `npm run test` 全绿，且 `tsc --build` 在 `verbatimModuleSyntax` 下通过；禁用 import 静态守卫对新增契约/工厂文件 0 命中（`@anthropic-ai/*`/`better-sqlite3`/`@nestjs/*`/`child_process`/`codex`/`Date.now`/`randomUUID`）。四个故事各自单测通过：14 类事件构造/判别工具产出结构稳定且与 c2-1 类型契约一致（未重定义联合）；**EventMapper 契约的未知原生事件降级不崩**（不抛、不伪造、不污染已识别事件）、映射契约测试全通过；`result` 事件无 tokenUsage 上报时字段留空、经 `apply` 后 snapshot 不显假 0（AC-9）；`phase_changed` 由核心相位迁移产出、不在 EventMapper 归一集合内。
+在 `packages/core` 内运行 `npm run test` 全绿，且 `tsc --build` 在 `verbatimModuleSyntax` 下通过；禁用 import 静态守卫对新增契约/工厂文件 0 命中（`@anthropic-ai/*`/`better-sqlite3`/`@nestjs/*`/`child_process`/`Date.now`/`randomUUID`）。四个故事各自单测通过：14 类事件构造/判别工具产出结构稳定且与 c2-1 类型契约一致（未重定义联合）；**EventMapper 契约的未知原生事件降级不崩**（不抛、不伪造、不污染已识别事件）、映射契约测试全通过；`result` 事件无 tokenUsage 上报时字段留空、经 `apply` 后 snapshot 不显假 0（AC-9）；`phase_changed` 由核心相位迁移产出、不在 EventMapper 归一集合内。
 
 ## Assumptions
 
