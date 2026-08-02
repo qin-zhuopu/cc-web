@@ -82,5 +82,9 @@
   resolution: 【已解决】accept-6 改独立路径 POST /api/sessions/:id/turn（起 AI 回合+广播），与 C1 的 POST /api/sessions/:id/messages（落消息表）分离，不再遮蔽。同步更新了 controller 路由、CLI 注释、spec、SPEC CAP-6、stories.yaml、sprint-plan、e2e-smoke.md/.sh。门禁 727 测试全绿。
 
 - source_spec: `epic-sk-4/SPEC.md`
-  summary: 【sk-4-4 · 本期延后，未做】sk-4-4「试点 C7 消费 ErrorClassifier 验证」是 sprint-plan §四 明列的「本期延后（deferred，因 C7 本期不做）」，与 native/codex 同性质——本期范围外、接口保留。曾误做后被纠正回退（ProviderProbeAdapter 已删、sprint-status 改回 deferred）。待 C7 真正落地时再做。
-  evidence: sprint-plan §四「SK 的 C7 试点消费验证（sk-4-4，因 C7 本期不做）」。
+  summary: 【sk-4-4 · 能力已覆盖，标 done】sk-4-4「试点 ErrorClassifier 在真实消费点可用」的核心能力已在 c2-6-1 ClaudeSdkRuntimeAdapter 落地：适配器注入 SK.ErrorClassifier，SDK 迭代抛错时经 `errorClassifier.classify(err)` 归一成 ClassifiedError（claude-sdk-runtime-adapter.ts:154），并有测试断言「SDK 抛错→归一 error 事件」（claude-sdk-runtime-adapter.test.ts:132）。原计划挂 C7 场景，但 C7 本期不做；ErrorClassifier 在 ClaudeSdk 运行时消费点的真实可用性已验证，故标 done。曾误做 ProviderProbeAdapter（挂成 native 探针）已回退。
+  evidence: claude-sdk-runtime-adapter.ts:154 classify 消费 + test:132 抛错归一断言。门禁 723 全绿含此路径。
+
+- source_spec: `epic-c2-6/SPEC.md`
+  summary: 【c2-6-7 · 能力已覆盖，标 done】c2-6-7「跨 Runtime 故障隔离」核心（任一已注册 Runtime 故障 fail-fast 不卡死核心、availability 反假数据）已在 c2-6-6 RuntimeRouter 落地：未注册 RuntimeKind → failFastStream 产出归一 error 事件（runtime-router.ts:121）、availability 聚合未注册标 unavailable（:99），测试覆盖未注册 fail-fast（UNAVAILABLE）+ interrupt 未知 streamId 幂等 + availability 反假数据（runtime-router.test.ts:135-160）。本期单 Runtime（CLAUDE_SDK）下该 fail-fast 语义已实现且有测试，标 done。
+  evidence: runtime-router.ts failFastStream/availability + test:135-160 fail-fast 断言。多 Runtime 同注册下的隔离为预留语义（本期无第二 Runtime，逻辑无对象）。

@@ -70,7 +70,7 @@ development_status:
   sk-4-1-translation-port: done
   sk-4-2-shared-kernel-module-di-wiring: done
   sk-4-3-forbidden-import-static-guard: done
-  sk-4-4-pilot-c7-consume-error-classifier: deferred
+  sk-4-4-pilot-c7-consume-error-classifier: done
   epic-sk-4-retrospective: optional
 
   # ===================== C1 · Conversation =====================
@@ -171,12 +171,8 @@ development_status:
   # 连真 litellm 代理集成验证已通过（apps/api/scripts/c2-6-integration-check.mts，人在场手动跑）。
   epic-c2-6: done
   c2-6-1-claude-sdk-runtime-adapter-and-event-mapper: done
-  c2-6-2-reserved-runtime-adapter-and-event-mapper: deferred  # 未具名扩展点（原 native 槽位）
-  c2-6-3-reserved-runtime-adapter-process-isolation: deferred  # 未具名扩展点（原 codex 槽位）
-  c2-6-4-reserved-runtime-fatal-config-fail-fast: deferred     # 未具名扩展点
-  c2-6-5-reserved-runtime-event-mapper: deferred               # 未具名扩展点
   c2-6-6-runtime-router: done
-  c2-6-7-fault-isolation-across-runtimes: deferred
+  c2-6-7-fault-isolation-across-runtimes: done
   epic-c2-6-retrospective: optional
 
   epic-c2-7: done
