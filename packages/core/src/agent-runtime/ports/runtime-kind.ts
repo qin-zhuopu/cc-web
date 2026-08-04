@@ -6,7 +6,7 @@
 // 供驱动/出站端口签名引用。不实现可用性探测（属适配器层）、不接 SDK、不接 NestJS DI。
 //
 // 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；不取 Clock、不生成 id。字段全 readonly。
+// node:child_process；不取 Clock、不生成 id。字段全 readonly。
 
 /**
  * RuntimeKind —— 一次回合发起时锁定的运行时种类（对齐 architecture §3.6）。
@@ -14,16 +14,15 @@
  * 由 StartStreamService 经 C7.ProviderRepository 解析 providerId 后选定（FR-2.2），
  * 之后 AgentRuntimePort 依此路由到对应适配器：
  *  - CLAUDE_SDK：ClaudeSdkRuntimeAdapter（封装 @anthropic-ai/claude-agent-sdk 的 Query）。
- *  - NATIVE：NativeRuntimeAdapter（Native HTTP provider 的 SSE 流）。
- *  - CODEX：CodexRuntimeAdapter（封装 CodexAppServerManager 子进程）。
+ *
+ * AgentRuntimePort 是预留的**未具名扩展点**：本期只实现 CLAUDE_SDK 一个具体运行时，
+ * 将来新增 agent 时由其适配器声明自己的枚举成员；枚举不预先具名任何尚未实现的 agent。
  *
  * 采用 TS enum（对齐架构 §3.6 原文与 StreamPhaseKind / TerminalSubstate 风格），
- * 字面量值与运行时路由键、C7 协议解析结果对齐。
+ * 字面量值与运行时路由键对齐。
  */
 export enum RuntimeKind {
   CLAUDE_SDK = 'claude-sdk',
-  NATIVE = 'native',
-  CODEX = 'codex',
 }
 
 /**

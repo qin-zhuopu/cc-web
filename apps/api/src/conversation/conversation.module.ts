@@ -9,10 +9,13 @@
 //     DATABASE token 全局可注入，无需在此重复 imports。
 //   - 仓储：SqliteSessionRepository/SqliteMessageRepository 经 useFactory inject DATABASE。
 //   - 4 个用例：按各自构造签名 useFactory inject 对应 token（构造参数顺序务必对齐 core 里的 constructor）。
-//   - TitleGenerator：本期绑 StubTitleGenerator（C2 落地后替换，见 stub 注释）。
+//   - TitleGenerator：权威实现归 C2（GenerateTitleService）。经 forwardRef(() => AgentRuntimeModule)
+//     import 拿 C2 exports 的 TITLE_GENERATOR，绑到 C1 的 TITLE_GENERATOR token（解 C1↔C2 环的一侧；
+//     C2 侧 imports forwardRef(() => ConversationModule) 拿 C1 用例，两侧成对才能解环）。
+//     StubTitleGenerator 已退场（C2 真实现落地）。
 //   - exports：只导出 4 个用例 token 供 C2/C5 消费；【不 export 仓储写端口】——
 //     消费方只能经用例读写会话/消息，不得绕过用例直写库（c1-6-4 消费方契约）。
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import {
   ManageSessionService,
   SetSessionTitleService,
@@ -34,7 +37,8 @@ import { CLOCK, ID_GENERATOR, RUNTIME_LOG } from '../shared-kernel/sk-tokens.js'
 import { DATABASE } from '../database/database.tokens.js';
 import { SqliteSessionRepository } from './adapters/sqlite-session-repository.js';
 import { SqliteMessageRepository } from './adapters/sqlite-message-repository.js';
-import { StubTitleGenerator } from './adapters/stub-title-generator.js';
+import { AgentRuntimeModule } from '../agent-runtime/agent-runtime.module.js';
+import { TITLE_GENERATOR as C2_TITLE_GENERATOR } from '../agent-runtime/agent-runtime.tokens.js';
 import { SessionController } from './controllers/session.controller.js';
 import { MessageController } from './controllers/message.controller.js';
 import {
@@ -48,7 +52,7 @@ import {
 } from './conversation.tokens.js';
 
 @Module({
-  imports: [SharedKernelModule],
+  imports: [SharedKernelModule, forwardRef(() => AgentRuntimeModule)],
   providers: [
     // —— 出站适配器 ——
     {
@@ -61,8 +65,13 @@ import {
       useFactory: (db: BetterSqlite3.Database) => new SqliteMessageRepository(db),
       inject: [DATABASE],
     },
-    // TitleGenerator：本期占位 stub（C2 GenerateTitleService 落地后替换）。
-    { provide: TITLE_GENERATOR, useClass: StubTitleGenerator },
+    // TitleGenerator：权威实现归 C2（GenerateTitleService）。经 forwardRef import AgentRuntimeModule
+    // 拿其 exports 的 C2_TITLE_GENERATOR，重绑到 C1 的 TITLE_GENERATOR token（SetSessionTitleService 消费此实现）。
+    {
+      provide: TITLE_GENERATOR,
+      useFactory: (titleGenerator: TitleGeneratorPort) => titleGenerator,
+      inject: [C2_TITLE_GENERATOR],
+    },
 
     // —— 驱动用例（构造参数顺序严格对齐 core 里各 service 的 constructor）——
     // ManageSessionService(SessionRepository, MessageRepository, Clock, IdGenerator)

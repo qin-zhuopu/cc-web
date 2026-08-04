@@ -11,7 +11,7 @@
 //
 // 【本故事（c2-5-3）范围】best-effort 优雅 interrupt + reconcilePhase 收敛 + #578 端到端回归：
 //   ④ markSettling 后经注入的 AgentRuntimePort.interrupt(turnRef) 发 best-effort 优雅中断
-//      （turnRef 由核心以 { streamId } 构造，句柄由适配器按 streamId 内部解析，核心不碰 native）。
+//      （turnRef 由核心以 { streamId } 构造，句柄由适配器按 streamId 内部解析，核心不碰 handle）。
 //   ⑤ interrupt 返回权威 runtimeStatus → 经 c2-1 reconcilePhase 收敛：terminal 相位据子态翻终态
 //      （completed→complete / aborted→abort / errored→fail，归因经 SK.ErrorClassifier）；
 //      null（running/unknown）→ 不纠正，交 force-abort 安全网兜底。
@@ -22,7 +22,7 @@
 // 并把 force-abort 到期兜底回调补全（仍未终态则 abort(ABORTED)+forceKillTurn），使 #578 招牌回归为真断言。
 //
 // 【铁律 · 核心零框架】本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / node:timers / codex / uuid；不直调 setTimeout / setInterval /
+// node:child_process / node:timers / uuid；不直调 setTimeout / setInterval /
 // 系统时钟——force-abort 延时经注入的 ForceAbortScheduler，取时经注入 SK.Clock。
 // 归因一律经 SK.ErrorClassifier.classify，绝不手拼 ClassifiedError 造假 code。
 // 类型-only import 用 import type + .js 扩展名（verbatimModuleSyntax），值 import 走普通 import。
@@ -148,10 +148,10 @@ export class AbortStreamService implements AbortStreamUseCase {
       return;
     }
 
-    // turnRef 由核心以 { streamId } 构造：核心不持有/不解释 native 句柄（适配器按 streamId 内部解析）。
+    // turnRef 由核心以 { streamId } 构造：核心不持有/不解释 handle 句柄（适配器按 streamId 内部解析）。
     // 【CAP-5 契约边界 · FR-3.5 / AC-6】abort 必通知适配器关句柄——优雅路径经 interrupt(turnRef)、
-    //   兜底路径经 forceKillTurn(turnRef)，两者均传本 turnRef（streamId 正确、native 恒 undefined）。
-    //   核心【绝不】触碰 TurnRef.native 结构（native 由适配器 c2-6 解析实际 Query/thread-turn 句柄）。
+    //   兜底路径经 forceKillTurn(turnRef)，两者均传本 turnRef（streamId 正确、handle 恒 undefined）。
+    //   核心【绝不】触碰 TurnRef.handle 结构（handle 由适配器 c2-6 解析实际 Query/thread-turn 句柄）。
     //   「ClaudeCode late-unregister（旧 lockId 的 teardown 不 evict 新 turn 句柄）为 no-op」是
     //   【适配器侧（c2-6）】语义，本故事不在核心实现——核心侧只保证「abort 必调 interrupt 和/或
     //   forceKillTurn 通知适配器」这一契约。

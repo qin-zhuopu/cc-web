@@ -35,10 +35,8 @@ import type {
 import type { AgentStreamEvent } from '../domain/event/agent-stream-event.js';
 
 describe('RuntimeKind 枚举（对齐 architecture §3.6）', () => {
-  it('三种运行时字面量值锁定', () => {
+  it('本期唯一运行时字面量值锁定（CLAUDE_SDK）', () => {
     expect(RuntimeKind.CLAUDE_SDK).toBe('claude-sdk');
-    expect(RuntimeKind.NATIVE).toBe('native');
-    expect(RuntimeKind.CODEX).toBe('codex');
   });
 });
 
@@ -169,6 +167,7 @@ describe('C2 端口契约可被结构化对象满足（编译期通过即达标�
       interrupt: async (_ref) => 'idle',
       forceKillTurn: (_ref) => {},
       availability: async () => ({ kind: 'ready' }),
+      resolvePermission: (_ref, _decision) => {},
     };
     expect(request.runtimeKind).toBe('claude-sdk');
     expect(turnRef.streamId).toBe('run-1');

@@ -13,7 +13,7 @@
    ↕ HTTP / SSE
 NestJS 后端 (localhost:3001，跑在用户本机)
    ↕
-本地文件系统 / better-sqlite3 / Claude SDK / Codex （本机进程直接访问）
+本地文件系统 / better-sqlite3 / Claude SDK （本机进程直接访问；其他 AI agent 运行时为预留扩展点，未具名）
 ```
 
 因为后端在本机 localhost：

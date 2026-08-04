@@ -20,7 +20,7 @@ updated: 2026-07-30
 | E3 AgentStreamEvent 事件模型 | 14 类统一事件 + 累积产物 + 终态投影 | FR-4 |
 | E4 发起回合 StartStream | Runtime 选择 + 历史投影 + 事件消费 + 落 C1 | FR-2 |
 | E5 中断回合 AbortStream | force-abort 先行 + reconcile + 关 turn（#578 切断） | FR-3 |
-| E6 三 Runtime 适配器 + EventMapper | ClaudeSDK / Native / Codex 隔离归一 | FR-5、FR-4.2 |
+| E6 Runtime 适配器 + EventMapper | 本期仅 ClaudeSDK；AgentRuntimePort 为未具名预留扩展点 | FR-5、FR-4.2 |
 | E7 TitleGenerator + 权限中转 + 接线 | 供 C1 标题、权限事件中转、NestJS Module + forwardRef | FR-6、FR-7、DI |
 
 ---
@@ -73,12 +73,9 @@ updated: 2026-07-30
 
 - **S6.1** `ClaudeSdkRuntimeAdapter` + `ClaudeSdkEventMapper`：封装 `Query` 句柄 + `lockId` 归属 + `abortConversation`+`Query.interrupt` 组合中断。**AC-6/7**：SDK 事件归一等价、late-unregister no-op。（FR-5.2）
   - **运行时模型配置**：`query()` 的 `options.env` 从 `apps/api/.env`（模板 `apps/api/.env.example`）读取——litellm 网关 `ANTHROPIC_BASE_URL=https://litellm.jereh.cn`、模型 `Jereh-Kimi-K2.6`、密钥 `ANTHROPIC_AUTH_TOKEN`（只在 `.env`，不入库）。详见 architecture.md §7.1。集成/E2E 测试运行时同源读取，不注入 workflow 子代理。
-- **S6.2** `NativeRuntimeAdapter` + `NativeSseEventMapper`：HTTP SSE 流 + `AbortController` 中断。**AC-7**：SSE 帧归一等价。（FR-5.3）
-- **S6.3** `CodexRuntimeAdapter` 进程管理隔离：binary 发现（多候选选最新）/ Windows `.cmd` shim 经 cmd.exe / spawn / dispose orphan 规避。**AC-10**：核心包 `child_process`/`codex` 0 命中。（FR-5.4）
-- **S6.4** Codex fatal config stderr 快失败：签名命中→`fireClose`+`SIGKILL`，不等 30s linger；`onClose` 拒 pending RPC。**AC-10**：fail-fast 单测（不等 30s）。（FR-5.4 / NFR-4）
-- **S6.5** `CodexEventMapper`：JSON-RPC 通知（item lifecycle / fs.changed / auto-review）→ AgentStreamEvent（含 file_changed）。**AC-7**：Codex 事件归一等价。（FR-4.2）
-- **S6.6** `RuntimeRouter` 按 `RuntimeKind` 路由到三适配器之一，实现 `AgentRuntimePort`；`availability()` 非 spawn 探测。**AC**：路由正确、可用性探测不启进程。（FR-5.1）
-- **S6.7** 故障隔离：任一 Runtime 进程病 fail-fast 归 `ClassifiedError`，不阻塞其他 Runtime、不卡死核心。**AC-10**：Codex 病态不影响 ClaudeSDK/Native。（NFR-4）
+- **S6.2 ~ S6.5 其他 AI agent 运行时适配器（未具名，预留扩展点）**：`AgentRuntimePort` 为抽象未具名扩展点，本期不实现任何 ClaudeSDK 之外的具名适配器。将来真正新增 agent 时，按 S6.1 的范式补一个适配器 + 对应 EventMapper（端口契约 + 归一事件复用 E3），不预设其身份或协议。接口/路由位保留，新增不改核心。
+- **S6.6** `RuntimeRouter` 按 `RuntimeKind` 路由到已注册适配器（本期仅 `CLAUDE_SDK`），实现 `AgentRuntimePort`；未注册 RuntimeKind fail-fast 归 `ClassifiedError`（不静默、不卡死）；`availability()` 非 spawn 探测。**AC**：路由正确、未注册 fail-fast、可用性探测不启进程。（FR-5.1）
+- **S6.7** 故障隔离：任一已注册 Runtime 的进程/网络病 fail-fast 归 `ClassifiedError`，不阻塞其他 Runtime、不卡死核心。**AC-10**：某 Runtime 病态不影响其他在途回合。（NFR-4，本期单 Runtime 下为预留语义）
 
 ## E7 · TitleGenerator + 权限中转 + 接线
 
@@ -115,12 +112,12 @@ updated: 2026-07-30
 
 - **Sprint 1（骨架 + phase 状态机 + 事件模型）**：E1 全部、E2 全部、E3 全部。产出零框架 C2 核心骨架 + phase 不变量 + `canAccept` + abort 保证翻终态 + AgentStreamEvent + 单测（含 #578 反例回归）。
 - **Sprint 2（发起 + 中断用例）**：E4 全部、E5 全部。产出 StartStream/AbortStream 用例 + force-abort 先行 + reconcile + 关 turn，用假 `AgentRuntimePort`/假 Clock 跑通 #578 反例 smoke。
-- **Sprint 3（三适配器 + 接线）**：E6 全部、E7 全部。产出三 Runtime 适配器 + EventMapper（表驱动归一测试）+ Codex 进程隔离 + fail-fast + NestJS Module/Controller + forwardRef 解 C1↔C2 环 + 终态映射 C1。
+- **Sprint 3（适配器 + 接线）**：E6 全部、E7 全部。产出本期 ClaudeSdkRuntimeAdapter + EventMapper（表驱动归一测试）+ RuntimeRouter + NestJS Module/Controller + forwardRef 解 C1↔C2 环 + 终态映射 C1（其他 AI agent 适配器为未具名预留扩展点，本期不实现）。
 
 ## 定义完成 (DoD)
 
 - 对应 FR/AC 单测与反例 smoke 全绿（`npm run test` 层，无需真实 SDK/进程/网络，用假 `AgentRuntimePort` + 假 Clock/IdGenerator + 假 C1 用例端口）。
 - **abort 卡死回归通过（AC-2 核心反例）**：interrupt 永不 resolve 时 phase 仍翻 `terminal(aborted)`、`canAccept()=true`（GitHub #578 结构化切断）。
-- 禁用 import 静态扫描 0 命中（AC-14）；phase 不入持久化路径、不与 C1 `StreamStatus` 混用（AC-15）；Codex 进程复杂度锁在 `CodexRuntimeAdapter`（AC-10）。
+- 禁用 import 静态扫描 0 命中（AC-14）；phase 不入持久化路径、不与 C1 `StreamStatus` 混用（AC-15）；任一具名适配器的进程复杂度锁在其适配器内（AC-10，本期仅 ClaudeSdkRuntimeAdapter）。
 - 归因分类反例通过（AC-5：ABORTED vs TIMEOUT vs PROCESS）；无假 tokenUsage 0（AC-9）；终态→C1 映射无漂移（AC-12）。
 - 跨上下文端口引用闭合：`C2.AgentRuntimePort ← C3`、`C2.TitleGenerator ← C1`、`C1 会话用例 ← C2`、`C7.ProviderRepository → C2 消费`；C1↔C2 环经 forwardRef 解。

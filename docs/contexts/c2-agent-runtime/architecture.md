@@ -13,7 +13,7 @@ updated: 2026-07-30
 > 边界契约见 [../../architecture/context-boundaries.md](../../architecture/context-boundaries.md)。
 > 依赖的 SK 端口签名风格见 [../shared-kernel/architecture.md](../shared-kernel/architecture.md)；C1 持久 StreamStatus 语义见 [../c1-conversation/architecture.md](../c1-conversation/architecture.md)。
 
-## 1. 上下文定位与依赖方向
+## 1. 领域边界定位与依赖方向
 
 ```
         [驱动适配器] NestJS ChatController (HTTP/SSE) / InterruptController
@@ -29,7 +29,8 @@ updated: 2026-07-30
                +   C1: AppendMessageUseCase / GetSessionHistoryUseCase（import type）
                +   C7: ProviderRepository（只读，import type）
                ↓ 由适配器实现
-        [被驱动适配器] ClaudeSdkRuntimeAdapter / NativeRuntimeAdapter / CodexRuntimeAdapter
+        [被驱动适配器] ClaudeSdkRuntimeAdapter（本期实现）
+                       + 未具名的 AgentRuntimePort 扩展点（预留，本期不实现具体适配器）
                        （各带 EventMapper）+ SK/C1/C7 适配器（经 DI 注入）
 ```
 
@@ -51,7 +52,7 @@ packages/core/agent-runtime/
 │   │   ├── tool-info.ts             # ToolUseInfo / ToolResultInfo 值对象
 │   │   └── usage.ts                 # TokenUsage / ContextUsage 值对象（只存投影，不算）
 │   ├── runtime/
-│   │   ├── runtime-kind.ts          # RuntimeKind 枚举（claude-sdk/native/codex）
+│   │   ├── runtime-kind.ts          # RuntimeKind 枚举（本期仅 claude-sdk；其他 AI agent 运行时为未具名预留扩展点）
 │   │   └── runtime-availability.ts  # RuntimeAvailability 值对象
 │   └── message-keys.ts              # C2 自身 i18n 键（c2.*）
 ├── ports/
@@ -71,7 +72,7 @@ packages/core/agent-runtime/
 └── index.ts                         # 桶文件：仅导出端口与领域类型
 ```
 
-> 具体适配器（`ClaudeSdkRuntimeAdapter`、`NativeRuntimeAdapter`、`CodexRuntimeAdapter` 及其 `EventMapper`、`CodexAppServerManager`）位于 `apps/api` 适配器层，不在核心包内。C1/C7 端口只是**类型引用**（`import type`），实现由对应 Module 提供、经 DI 注入。本文件给签名，不给实现。
+> 具体适配器：本期仅 `ClaudeSdkRuntimeAdapter`（含其 `EventMapper`）位于 `apps/api` 适配器层，不在核心包内。`AgentRuntimePort` 是未具名的预留扩展点——将来加新 AI agent 时各自实现一个适配器（含其 `EventMapper`），不在本期预设具体实现。C1/C7 端口只是**类型引用**（`import type`），实现由对应 Module 提供、经 DI 注入。本文件给签名，不给实现。
 
 ## 3. 领域模型 (Domain Model)
 
@@ -183,7 +184,7 @@ export enum TerminalReasonCode {
   IDLE_TIMEOUT    = 'idle_timeout',     // 长时间无事件 → ErrorCode.TIMEOUT
   TOOL_TIMEOUT    = 'tool_timeout',     // 工具超时 → ErrorCode.PROCESS/TIMEOUT
   RUNTIME_ERROR   = 'runtime_error',    // Runtime 上游错误 → 对应真实 ErrorCode
-  PROCESS_DIED    = 'process_died',     // Codex app-server 僵死/退出 → ErrorCode.PROCESS
+  PROCESS_DIED    = 'process_died',     // 外部 AI agent 运行时进程僵死/退出 → ErrorCode.PROCESS（本期无对应实现，预留）
 }
 
 export interface TerminalReason {
@@ -240,7 +241,8 @@ export type AgentStreamEvent =
 
 ```ts
 // domain/runtime/runtime-kind.ts
-export enum RuntimeKind { CLAUDE_SDK = 'claude-sdk', NATIVE = 'native', CODEX = 'codex' }
+export enum RuntimeKind { CLAUDE_SDK = 'claude-sdk' }
+// 本期 RuntimeKind 仅 CLAUDE_SDK；将来加新 AI agent 时再扩此枚举（未具名，预留扩展点）。
 
 // domain/runtime/runtime-availability.ts
 export type RuntimeAvailability =
@@ -368,7 +370,7 @@ export interface RuntimeRunRequest {
   abortSignal: AbortSignalLike;
 }
 
-export interface TurnRef { readonly streamId: StreamSessionId; readonly native?: unknown; }
+export interface TurnRef { readonly streamId: StreamSessionId; readonly handle?: unknown; }
 
 export interface AgentRuntimePort {
   /** 发起一次原生调用，产出**归一后**的 AgentStreamEvent 流（EventMapper 在适配器内）。 */
@@ -377,11 +379,11 @@ export interface AgentRuntimePort {
   interrupt(turnRef: TurnRef): Promise<string | null>;
   /** 强制关闭 turn（force-abort 网兜底调用）。 */
   forceKillTurn(turnRef: TurnRef): void;
-  /** 非 spawn 的可用性探测（Codex 探 binary/版本，不启进程）。 */
+  /** 非 spawn 的可用性探测（如外部 agent 适配器探 binary/版本，不启进程）。 */
   availability(): Promise<RuntimeAvailability>;
 }
 ```
-- **实现位置**：三个适配器 `ClaudeSdkRuntimeAdapter` / `NativeRuntimeAdapter` / `CodexRuntimeAdapter`（见第 7 节）。
+- **实现位置**：本期仅 `ClaudeSdkRuntimeAdapter`（见第 7 节）；其他 AI agent 运行时为未具名预留扩展点，将来加新 agent 时各自实现一个适配器。
 - **供 C3 复用**：引用图 `C2.AgentRuntimePort ← C3`。C3 `imports: [AgentRuntimeModule]` 后注入本端口发起子 agent AI 调用，C2 不感知子 agent。
 
 ### 5.2 C1 用例端口（本地 import type 别名）
@@ -411,13 +413,13 @@ export type { ProviderRepository };   // C2 只读消费：解析 providerId →
 - **6.4 终态 → C1 持久 StreamStatus 映射（NFR-8 / AC-12）** —— `terminal(completed)` → `updateStreamStatus(msgId, 'completed', tokenUsage)`；`terminal(aborted)` → `'interrupted'`；`terminal(errored)` → `'error'`。C2 只经 `C1.AppendMessageUseCase.updateStreamStatus` 端口写回，**不传 phase 本身**，不直写库。
 - **6.5 GenerateTitleService.generateTitle** —— 用轻量非流式 Runtime 调用生成标题字符串；**不创建 StreamSession、不进 registry、不影响 canAccept**（FR-6.3）；失败抛出交 C1 降级。
 - **6.6 权限中转（FR-7）** —— Runtime 的权限请求经 EventMapper 归一成 `permission_request` 事件对外发；上层（经 C5 经纪）的决议经驱动端口回传 → 转发 `AgentRuntimePort` 对应适配器。C2 **不做**经纪判定。
-- 所有用户可见文案用 `c2.*` messageKey，渲染交 `SK.TranslationPort`；错误文案 key 来自 `SK.ErrorClassifier` 的 `messageKey`；关键路径经 `SK.RuntimeLog`（source=`c2.stream`/`c2.runtime.codex` 等）。
+- 所有用户可见文案用 `c2.*` messageKey，渲染交 `SK.TranslationPort`；错误文案 key 来自 `SK.ErrorClassifier` 的 `messageKey`；关键路径经 `SK.RuntimeLog`（source=`c2.stream`/`c2.runtime.<adapter>` 等）。
 
 ## 7. 被驱动适配器（apps/api，隔离 SDK/进程/HTTP）
 
-> 核心零框架；下列适配器实现 `AgentRuntimePort`，各带一个 `EventMapper` 把原生事件归一成 `AgentStreamEvent`（FR-4.2）。核心 `StreamSession`/用例代码**不出现** `@anthropic-ai/*`/`child_process`/`codex`/HTTP SSE 细节（NFR-1 / AC-14）。
+> 核心零框架；下列适配器实现 `AgentRuntimePort`，各带一个 `EventMapper` 把原生事件归一成 `AgentStreamEvent`（FR-4.2）。核心 `StreamSession`/用例代码**不出现** `@anthropic-ai/*`/`child_process`/HTTP SSE 等适配器私有细节（NFR-1 / AC-14）。**本期仅实现 7.1 `ClaudeSdkRuntimeAdapter`；7.2 为未具名预留扩展点，本期不实现具体适配器。**
 
-### 7.1 ClaudeSdkRuntimeAdapter
+### 7.1 ClaudeSdkRuntimeAdapter（本期实现）
 - 封装 `@anthropic-ai/claude-agent-sdk` 的 `Query` 句柄（对齐 `claude-client.ts` + `conversation-registry.ts`）。
 - **句柄注册 + lockId 归属**：`run` 时以 `lockId` 注册 `Query`；`interrupt` 组合 `abortConversation(reason)` + `Query.interrupt()`（对齐现有 `abortConversation`：先 abort application-owned signal 再发优雅 interrupt）。**late-unregister（旧 lockId）为 no-op**，超越turn的 teardown 不能 evict 新 turn 的句柄（AC-6）。
 - `ClaudeSdkEventMapper`：SDK message → `AgentStreamEvent`（text/thinking/tool_use/tool_result/permission_request/result 等）。
@@ -425,21 +427,17 @@ export type { ProviderRepository };   // C2 只读消费：解析 providerId →
   - **边界**：这些 env 由 apps/api 适配层在运行时读取并注入；核心包 `packages/core` 零框架、禁 `@anthropic-ai/*`、禁读 `process.env`（`scripts/check-core-imports.mjs` 守卫）。
   - **注意**：`.env` 已被 `.gitignore` 排除，`ANTHROPIC_AUTH_TOKEN` 绝不入库/回显。此 env 供 SDK query 与 E2E **运行时**读取，**不注入 workflow 子代理**（子代理继承会话模型）。
 
-### 7.2 NativeRuntimeAdapter
-- 封装 Native HTTP provider 的 SSE 流（`fetch` + `AbortController`）。
-- `interrupt` = `abortController.abort()` + 读取响应权威状态（若有）。
-- `NativeSseEventMapper`：SSE 帧 → `AgentStreamEvent`。
+### 7.2 未具名预留扩展点（本期不实现具体适配器）
 
-### 7.3 CodexRuntimeAdapter（进程复杂度全隔离在此，FR-5.4 / AC-10）
-- 封装 `CodexAppServerManager`（对齐 `codex/app-server-manager.ts`）：
-  - **binary 发现**：PATH 遍历 + macOS bundle；多候选**探 `--version` 选最新**（防旧 Homebrew codex 影子新 Codex.app，P0.1）。
-  - **spawn**：Windows `.cmd`/`.bat` shim 经 `cmd.exe /d /s /c`（防 spawn EINVAL）；`windowsHide`；proxy-safe env。
-  - **fatal config stderr 快失败**：`Failed to deserialize overridden config` / `unknown variant`+config 上下文 → 立即 `fireClose` + `SIGKILL`，**不等 30s linger**（P0.2 / AC-10）。
-  - **僵死/退出**：`proc.once('exit')` → 归 `ErrorCode.PROCESS`（`process_died`）；`onClose` 拒绝所有 pending RPC（避免 30s RPC timeout 卡死）。
-  - **中断关 turn/thread**：`interrupt` 关闭对应 thread/turn（对齐 CLAUDE.md 优先排查方向第 4 点，防残留）。
-  - **dispose**：app exit 时优雅关闭避免 orphan 进程。
-- `CodexEventMapper`：Codex JSON-RPC 通知（item lifecycle / fs.changed / auto-review 等）→ `AgentStreamEvent`（含 `file_changed`）。
-- **关键纪律**：以上进程级复杂度**全部锁在此适配器内**，任一 Codex 进程病（fatal config / spawn 失败 / 僵死）都 fail-fast 归一成 `ClassifiedError`，**不卡死 C2 核心的回合生命周期，不污染另外两个 Runtime**（NFR-4）。
+`AgentRuntimePort` 是六边形出站端口，本身是**预留的扩展点**：将来加新 AI agent（无论是 HTTP SSE 协议的 provider，还是需要本机子进程 + JSON-RPC 的 agent）时，各自实现一个适配器 + 对应 `EventMapper`，把其原生事件归一成 `AgentStreamEvent`。**本期不预设、不实现任何 ClaudeSdkRuntimeAdapter 之外的具体适配器**，也不在文档写死具体 agent 名字。
+
+将来某个新 agent 适配器落地时，需遵守的通用纪律（与 `ClaudeSdkRuntimeAdapter` 一致）：
+- 实现 `AgentRuntimePort` 全部方法（`run` / `interrupt` / `forceKillTurn` / `availability`），并把该 agent 的原生事件经专属 `EventMapper` 归一成 `AgentStreamEvent`（FR-4.2）。
+- **进程/网络/SDK 细节全部锁在适配器内**：核心 `StreamSession`/用例代码不出现 `child_process`/HTTP/SDK 细节（NFR-1 / AC-14）。
+- **故障隔离**：该 agent 的进程僵死/spawn 失败/init 失败必须 fail-fast 并归一成 `ClassifiedError`，不阻塞其他适配器、不卡死 C2 的回合生命周期（NFR-4）。
+- **中断关 turn**：`interrupt` 关闭该 agent 侧的 turn/thread/句柄，避免残留导致下一轮发送语义错乱（FR-3.5）。
+
+> 说明：早期文档曾把这一扩展点具名为 "Native（HTTP SSE）" 与 "Codex（子进程 + JSON-RPC）" 两类适配器并给出进程级设计。核心代码清理时这些具名实现已删除；此处收敛为抽象的未具名扩展点，等将来真正新增 agent 时再按上述纪律补一个适配器。
 
 ## 8. 依赖注入接线 (NestJS 侧)
 
@@ -454,7 +452,7 @@ AgentRuntimeModule (apps/api)
                                               StreamSessionRegistry, ErrorClassifier, Clock, IdGenerator, RuntimeLog)
     AbortStreamUseCase   → AbortStreamService(AgentRuntimePort, StreamSessionRegistry, ErrorClassifier, Clock, RuntimeLog)
     TitleGenerator       → GenerateTitleService(AgentRuntimePort(轻量非流式), ProviderRepository)
-    AgentRuntimePort     → RuntimeRouter([ClaudeSdkRuntimeAdapter, NativeRuntimeAdapter, CodexRuntimeAdapter])
+    AgentRuntimePort     → RuntimeRouter([ClaudeSdkRuntimeAdapter])  // 本期仅此一个；其他 AI agent 适配器为未具名预留扩展点
                             // 按 RuntimeKind 路由到对应适配器；各适配器内含其 EventMapper
     StreamSessionRegistry→ InMemoryStreamSessionRegistry   // 内存态，非持久层（NFR-2）
   exports:
@@ -484,7 +482,7 @@ NestJS DI 充当接线盒，核心包零框架依赖，符合分层铁律。**C1
 **边界纪律自检**：
 - C2 未定义/未重写任何 SK 概念（ErrorClassifier/Clock/IdGenerator 只引用）；未定义 C1 的会话/消息实体、未定义 C7 的 Provider 概念，只 `import type` 其端口。
 - C2 核心**不含**会话/消息持久化（`chat_sessions`/`messages` SQL）、子 agent（logical run/attempt/RunPhase）、Provider 配置管理、权限经纪判定、MCP 注册；持久 `StreamStatus` 不在 C2 建模，只经 `C1.AppendMessageUseCase` 端口写回（NFR-2）。
-- C2 核心不 import `@anthropic-ai/*` / `better-sqlite3` / `@nestjs/*` / `node:child_process` / codex SDK；SDK/进程/HTTP 全在适配器（NFR-1 / AC-14）。
+- C2 核心不 import `@anthropic-ai/*` / `better-sqlite3` / `@nestjs/*` / `node:child_process` 等框架/SDK/进程模块；SDK/进程/HTTP 全在适配器（NFR-1 / AC-14）。
 - `StreamPhase` 是实时内存态、不落库、不与 C1 持久 `StreamStatus` 混用（NFR-2 / AC-15）——切断 stop/abort 卡死误用根因。
 - 无实现级循环依赖：C1↔C2 双向经 NestJS `forwardRef` 在接线层解，核心包只单向 `import type`。
 
@@ -502,5 +500,5 @@ NestJS DI 充当接线盒，核心包零框架依赖，符合分层铁律。**C1
 - 反假数据 smoke（AC-9）：Runtime 未上报 tokenUsage → `result` 事件字段空、落 C1 留空、断言 UI 无假 0。
 - 终态映射（AC-12）：completed/aborted/errored → C1 的 completed/interrupted/error，假 `AppendMessageUseCase` 断言只经端口写、无直写库、无 phase 泄漏。
 - TitleGenerator 隔离（AC-13）：调用不创建 StreamSession、不进 registry、不影响 canAccept。
-- Codex 隔离（AC-10）：fatal config stderr 触发 fail-fast（不等 30s）单测；核心包 `child_process`/`codex`/`@anthropic-ai/*` 0 命中扫描。
+- 适配器隔离（AC-10）：核心包 `child_process`/`@anthropic-ai/*` 等禁用 import 0 命中扫描。本期仅 `ClaudeSdkRuntimeAdapter`，其故障归一成 `ClassifiedError`；将来新 agent 适配器的 fail-fast（如外部 agent 进程僵死）由该适配器自测，不在本期预设。
 - 静态检查（AC-14/15）：`agent-runtime/` 核心包禁用 import 扫描 + phase 不入持久化路径 + 不 import C1 `StreamStatus` 做实时判断。

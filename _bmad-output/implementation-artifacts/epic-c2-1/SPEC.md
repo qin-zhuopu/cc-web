@@ -54,7 +54,7 @@ CodePilot 现有 stop/abort 卡死的根因是**运行时相位判断散落且�
 
 ## Constraints
 
-- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、`codex` SDK，禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。SDK/进程/HTTP 细节全锁在 `apps/api` 适配器层（本 epic 不产出适配器）。
+- **核心零框架 import（NFR-1 / AC-14）**：`packages/core/agent-runtime/` 禁止 import `@anthropic-ai/*`、`better-sqlite3`、`@nestjs/*`、`node:child_process`、任何第三方 AI agent SDK（未具名），禁止直调 `Date.now()`/`new Date()`/`randomUUID()`。SDK/进程/HTTP 细节全锁在 `apps/api` 适配器层（本 epic 不产出适配器）。
 - **`verbatimModuleSyntax` 已启用**：类型-only import 必须用 `import type`，模块说明符带 `.js` 扩展名（NodeNext 解析），否则 `tsc --build` 报错。本 epic 每个跨文件类型引用（`StreamPhase`/`TerminalReason`/`ClassifiedError`/`ToolUseInfo`/C1/C7 端口类型等）都须遵守。
 - **phase 不落库、不与 C1 持久 StreamStatus 混用（NFR-2 / AC-15，架构铁律）**：`StreamPhase` 是实时内存态，回答「现在这一刻还在生成吗」，绝不落库；C2 核心不 import、不建模 C1 的持久 `StreamStatus`（streaming/completed/interrupted/error）做实时判断。这是 stop/abort 卡死根因的类型级切断，本 epic 在类型定义处就必须切干净。
 - **核心只单向 `import type` SK / C1 / C7**：C2 依赖 `SK.ErrorClassifier`/`Clock`/`IdGenerator`/`RuntimeLog`/`TranslationPort`、`C1.AppendMessageUseCase`/`GetSessionHistoryUseCase`、`C7.ProviderRepository`，核心包一律经 `import type` 只引用接口类型，不引入实现级依赖。C1↔C2 循环依赖在 NestJS 接线层用 `forwardRef` 解，本 epic 是纯类型/端口，核心内无实现级环。
@@ -65,7 +65,7 @@ CodePilot 现有 stop/abort 卡死的根因是**运行时相位判断散落且�
 - 不实现 `StreamSession` 聚合根与其迁移方法（`markSettling`/`complete`/`abort`/`fail`/`apply`/`canAccept`），也不做 #578 abort 卡死反例回归（interrupt 永不 resolve 仍翻 `terminal(aborted)`）——属 epic-c2-2。
 - 不实现 `StartStreamService`/`AbortStreamService`/`GenerateTitleService`/`StreamSessionRegistry` 等用例编排与 force-abort 先行逻辑（属 epic-c2-2 及后续）。
 - 不定义/实现 EventMapper 契约与未知事件降级规则（属 epic-c2-3）。
-- 不接入 Claude Agent SDK / Native SSE / Codex app-server 三适配器（属 epic-c2-6）。
+- 不接入任何具体 Runtime 适配器（Claude Agent SDK / 其他预留扩展点的适配器，未具名）（属 epic-c2-6）。
 - 不接入 NestJS DI（`AgentRuntimeModule`、`forwardRef`、Controller）与终态→C1 StreamStatus 映射的实现（属后续 epic）。
 
 ## Success signal

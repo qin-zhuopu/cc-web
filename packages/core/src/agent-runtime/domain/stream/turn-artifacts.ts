@@ -5,7 +5,7 @@
 // 【本故事（c2-1-4）范围】只定义只读值对象与无副作用纯函数投影。
 // 不实现 StreamSession.apply 的累积行为（属 epic-c2-2），不接 SDK / NestJS DI。
 //
-// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / codex。
+// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process。
 // 不取 Clock（无时间戳）、不生成 id（纯投影）；ToolUseInfo / ToolResultInfo 用 import type + .js 扩展名。
 // 绝不落库、绝不 import C1 的持久 StreamStatus（NFR-2 / AC-15）。
 

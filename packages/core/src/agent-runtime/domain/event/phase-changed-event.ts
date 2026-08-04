@@ -12,7 +12,7 @@
 // 本文件是 phaseChangedEvent 的权威定义处（single source of truth）；event-factory.ts 从此处 re-export，
 // 不重复定义，避免归一目标出现两处同名工厂。
 //
-// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / codex / uuid。
+// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / uuid。
 // 工厂只组装结构、不含任何 I/O，不调 Date.now / new Date / randomUUID。
 // StreamPhase 是实时内存相位、绝不落库、不与 C1 持久 StreamStatus 混用（NFR-2 / AC-15）。
 

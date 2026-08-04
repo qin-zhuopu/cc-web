@@ -1,6 +1,6 @@
 // apps/api/src/agent-runtime/runtime-router.test.ts
 // RuntimeRouter 单测（c2-6-6）。用假适配器（spy）断言：CLAUDE_SDK 委派 + 入参透传；
-// 未注册 Runtime（NATIVE/CODEX）fail-fast 归 error 事件（不静默）；availability 反假数据。
+// 未注册 Runtime（将来具名 agent 尚未接适配器）fail-fast 归 error 事件（不静默）；availability 反假数据。
 
 import { describe, it, expect, vi } from 'vitest';
 import type {
@@ -44,11 +44,12 @@ function makeRequest(streamId: string, kind: RuntimeKind): RuntimeRunRequest {
   };
 }
 
-/** 假适配器：run 产出一个 text 事件，interrupt/forceKillTurn/availability 为 spy。 */
+/** 假适配器：run 产出一个 text 事件，interrupt/forceKillTurn/availability/resolvePermission 为 spy。 */
 function makeFakeAdapter() {
   const runSpy = vi.fn();
   const interruptSpy = vi.fn(async () => 'interrupted');
   const forceKillSpy = vi.fn();
+  const resolvePermissionSpy = vi.fn(async () => {});
   const adapter: AgentRuntimePort = {
     run(request: RuntimeRunRequest): AsyncIterable<AgentStreamEvent> {
       runSpy(request);
@@ -59,11 +60,12 @@ function makeFakeAdapter() {
     },
     interrupt: interruptSpy as unknown as AgentRuntimePort['interrupt'],
     forceKillTurn: forceKillSpy as unknown as AgentRuntimePort['forceKillTurn'],
+    resolvePermission: resolvePermissionSpy as unknown as AgentRuntimePort['resolvePermission'],
     async availability() {
       return { kind: 'ready' as const };
     },
   };
-  return { adapter, runSpy, interruptSpy, forceKillSpy };
+  return { adapter, runSpy, interruptSpy, forceKillSpy, resolvePermissionSpy };
 }
 
 async function collect(stream: AsyncIterable<AgentStreamEvent>): Promise<AgentStreamEvent[]> {
@@ -102,23 +104,44 @@ describe('RuntimeRouter —— CLAUDE_SDK 委派', () => {
     router.forceKillTurn(ref);
     expect(forceKillSpy).toHaveBeenCalledWith(ref);
   });
+
+  it('resolvePermission 按 streamId 委派对应适配器，决议忠实透传（C2 不裁决）', async () => {
+    const { adapter, resolvePermissionSpy } = makeFakeAdapter();
+    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
+    const iter = router.run(makeRequest('s-6', RuntimeKind.CLAUDE_SDK))[Symbol.asyncIterator]();
+    await iter.next();
+    const ref: TurnRef = { streamId: 's-6' };
+    const decision = {
+      permissionRequestId: 'p-1',
+      status: 'allow' as const,
+      updatedInput: { path: '/tmp/x' },
+    };
+    await router.resolvePermission(ref, decision);
+    // 忠实透传：streamId + 决议原样委派，router 不篡改、不裁决。
+    expect(resolvePermissionSpy).toHaveBeenCalledWith(ref, decision);
+  });
+
+  it('resolvePermission 未知 streamId → no-op（不抛，无对应在途回合）', async () => {
+    const { adapter, resolvePermissionSpy } = makeFakeAdapter();
+    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
+    await router.resolvePermission(
+      { streamId: 'never' },
+      { permissionRequestId: 'p-x', status: 'deny' },
+    );
+    expect(resolvePermissionSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('RuntimeRouter —— 未注册 Runtime fail-fast（NFR-4）', () => {
-  it('NATIVE 未注册 → 产出归一 error 事件（不静默、不卡死）', async () => {
+  it('未注册的 RuntimeKind → 产出归一 error 事件（不静默、不卡死）', async () => {
+    // 模拟"将来新增 RuntimeKind 但适配器尚未注册"的场景（本期枚举只有 CLAUDE_SDK 一个合法成员，
+    // 用非法字面量构造请求以覆盖 fail-fast 路径；真实未注册值由将来新 agent 接入时出现）。
     const { adapter } = makeFakeAdapter();
     const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
-    const events = await collect(router.run(makeRequest('s-4', RuntimeKind.NATIVE)));
+    const events = await collect(router.run(makeRequest('s-4', 'future-agent' as RuntimeKind)));
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('error');
     expect((events[0] as { error: ClassifiedError }).error.code).toBe('UNAVAILABLE');
-  });
-
-  it('CODEX 未注册 → 同样 fail-fast 归 error', async () => {
-    const { adapter } = makeFakeAdapter();
-    const router = new RuntimeRouter({ [RuntimeKind.CLAUDE_SDK]: adapter }, fakeClassifier);
-    const events = await collect(router.run(makeRequest('s-5', RuntimeKind.CODEX)));
-    expect(events[0]?.type).toBe('error');
   });
 
   it('interrupt 未知 streamId → null（幂等，不抛）', async () => {

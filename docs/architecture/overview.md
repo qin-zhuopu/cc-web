@@ -19,7 +19,7 @@ CodePilot Web 是把现有 Electron 桌面应用 CodePilot 重构为**本机运�
    ↕ HTTP / SSE
 NestJS 后端 (localhost:3001，跑在用户本机)
    ↕
-本地文件系统 / better-sqlite3 / Claude SDK / Codex （本机进程直接访问）
+本地文件系统 / better-sqlite3 / Claude SDK （本机进程直接访问；其他 AI agent 运行时为预留扩展点，未具名）
 ```
 
 后端跑在本机 localhost，因此保留了桌面端"直读本地文件、用本地凭据、单用户单机 DB"的能力，同时获得 Web 的跨平台与前后端分离优势。
@@ -28,7 +28,7 @@ NestJS 后端 (localhost:3001，跑在用户本机)
 
 - **应用核心** `packages/core/*`：领域模型 + 用例，零框架依赖（禁止 import NestJS / SDK / better-sqlite3 / node:*）。
 - **驱动适配器**（入站）：NestJS Controller / SSE / IM Gateway → 调用用例端口。
-- **被驱动适配器**（出站）：SQLite Repository / Claude·Codex Runtime / 文件系统 / IM SDK，实现核心定义的出站端口。
+- **被驱动适配器**（出站）：SQLite Repository / Claude SDK Runtime / 文件系统 / IM SDK，实现核心定义的出站端口。其他 AI agent 运行时为预留扩展点（未具名）。
 - **接线盒**：NestJS Module + DI 替代手写 composition-root，把适配器注入核心。
 
 依赖方向永远指向核心。
@@ -88,7 +88,7 @@ codepilot-web/
 **SK → C7 → C1 → C2 → C3 → C8 → C9 → C10 → C4 → C6 → C5**
 
 - 先迁 SK（无依赖，打底）与 C7（收益清晰、风险最小，作试点）。
-- C2 最复杂、guardrail 最多（phase 状态机、abort 卡死、Codex 进程隔离），排在模式成熟后。
+- C2 最复杂、guardrail 最多（phase 状态机、abort 卡死、外部 AI agent 进程隔离），排在模式成熟后。
 - C5 依赖最多（编排 C1/C2/C6），压轴。
 
 ## 7. 文档规模总览

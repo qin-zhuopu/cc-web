@@ -26,10 +26,10 @@ const fakeMapper: EventMapper = {
     }
     const evt = raw as Record<string, unknown>;
     switch (evt['kind']) {
-      case 'native_text':
+      case 'fake_text':
         // 忠实归一为 text，不改变语义（累积后的全文由适配器口径决定，此处原样承载）。
         return { type: 'text', text: String(evt['content'] ?? '') };
-      case 'native_done':
+      case 'fake_done':
         // 忠实归一为 result；该 Runtime 未上报 token → 不填 tokenUsage（AC-9 精神：不造 0）。
         return { type: 'result' };
       default:
@@ -40,14 +40,14 @@ const fakeMapper: EventMapper = {
 };
 
 describe('EventMapper 契约：已识别原始事件归一为对应 AgentStreamEvent', () => {
-  it('native_text → text 事件，字段忠实、不改变语义', () => {
-    const out = fakeMapper.mapEvent({ kind: 'native_text', content: '你好' });
+  it('fake_text → text 事件，字段忠实、不改变语义', () => {
+    const out = fakeMapper.mapEvent({ kind: 'fake_text', content: '你好' });
     expect(out).not.toBeNull();
     expect(out).toEqual({ type: 'text', text: '你好' });
   });
 
-  it('native_done → result 事件；未上报 token 时不伪造 tokenUsage（不填 0）', () => {
-    const out = fakeMapper.mapEvent({ kind: 'native_done' });
+  it('fake_done → result 事件；未上报 token 时不伪造 tokenUsage（不填 0）', () => {
+    const out = fakeMapper.mapEvent({ kind: 'fake_done' });
     expect(out).toEqual({ type: 'result' });
     // 反假数据：不得凭空造 tokenUsage 键。
     expect(out && 'tokenUsage' in out).toBe(false);
@@ -84,7 +84,7 @@ describe('EventMapper 降级：不伪造、不静默改变已识别语义', () =
   });
 
   it('已识别事件按其本义归一，不张冠李戴（text 不被归一成 result）', () => {
-    const out = fakeMapper.mapEvent({ kind: 'native_text', content: 'abc' });
+    const out = fakeMapper.mapEvent({ kind: 'fake_text', content: 'abc' });
     expect(out?.type).toBe('text');
     expect(out?.type).not.toBe('result');
   });

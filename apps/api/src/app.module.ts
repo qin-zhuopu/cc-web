@@ -7,12 +7,14 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module.js';
 import { SharedKernelModule } from './shared-kernel/shared-kernel.module.js';
 import { ConversationModule } from './conversation/conversation.module.js';
+import { AgentRuntimeModule } from './agent-runtime/agent-runtime.module.js';
 
 @Module({
   imports: [
     DatabaseModule.forRoot(),
     SharedKernelModule,
     ConversationModule,
+    AgentRuntimeModule,
   ],
 })
 export class AppModule {}

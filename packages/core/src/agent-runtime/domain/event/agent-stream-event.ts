@@ -5,7 +5,7 @@
 // 【本故事（c2-1-5）范围】只定义事件联合与值对象（只读）。
 // 不定义 EventMapper 契约与未识别事件降级（属 c2-3），不接 SDK（属 c2-6），不接 NestJS DI。
 //
-// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process / codex。
+// 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* / node:child_process。
 // 引用 SK 的 ClassifiedError、C2 自身的 StreamPhase / TerminalReasonCode 均用 import type + .js 扩展名。
 // 绝不 import C1 的持久 StreamStatus 做实时判断（NFR-2 / AC-15）。
 

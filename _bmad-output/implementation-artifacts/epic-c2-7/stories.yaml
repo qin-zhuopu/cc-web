@@ -1,0 +1,114 @@
+# Epic C2-7 · TitleGenerator + 权限中转 + NestJS 接线（C2 基础设施收尾层）—— dev-auto 分派用故事清单
+# schema 见 .claude/skills/bmad-spec/assets/stories-schema.md
+# 顶层为 YAML 列表，按执行顺序自上而下；每次 dev-auto 调用只吃一个 id。
+# 依赖排序：GenerateTitleService（核心用例，纯逻辑先行）→ 权限决议中转端口/契约 → AgentRuntimeModule DI 接线（forwardRef 解环，装配前面所有 service）→ 三控制器（接驱动端口）→ ForceAbortScheduler setTimeout 生产实现 → 终态→C1 StreamStatus 映射接线闭合。
+# 无 status 字段（进度追踪走 sprint-status.yaml / 各故事 spec frontmatter）。
+# 本 epic 大部分产物落 apps/api（框架层，可 import @nestjs、可用 setTimeout）；只有 GenerateTitleService 落 packages/core 受核心零框架铁律约束；
+# 复用 c2-4 StartStreamService/registry/terminalSubstateToStreamStatus、c2-5 AbortStreamService/ForceAbortScheduler 端口、c2-6 RuntimeRouter/ClaudeSdkRuntimeAdapter、c2-1 端口、SK/C1 用例端口；不重写任何已交付逻辑。
+- id: "c2-7-1"
+  title: GenerateTitleService 非流式一次性标题生成（不创建 StreamSession / 不进 registry / 不影响 canAccept）
+  description: >-
+    在 packages/core 实现 GenerateTitleService implements TitleGenerator：经注入的 AgentRuntimePort 非流式一次性生成标题字符串，
+    与主回合流式路径完全隔离——不创建用户可见 StreamSession、不进 registry、不影响 canAccept（AC-13）；失败可抛供 C1 降级。详见 SPEC.md 的 CAP-1。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 packages/core/src/agent-runtime/usecases/generate-title.ts：class GenerateTitleService implements TitleGenerator
+    （复用 c2-1 端口 ports/driving/title-generator.ts 的 generateTitle(input: TitleGenerationInput): Promise<string>，绝不重定义端口）。
+    构造注入端口接口（对齐 architecture §8：AgentRuntimePort（轻量非流式）+ ProviderReadPort；如需归错/日志再注入 SK.ErrorClassifier/RuntimeLog），
+    generateTitle：经 ProviderReadPort.resolve 拿 provider 视图 → 组装轻量 RuntimeRunRequest（用 input.recentMessages 的纯文本 + 标题提示，content 拼装可最小化）→
+    一次性消费 AgentRuntimePort.run 的归一事件流，只提取 text 事件产物拼成标题串返回，消费完即弃。
+    【AC-13 隔离铁律 · 评审重点】绝不 idGenerator.next() 造用户可见 streamId、绝不 new StreamSession、绝不 registry.register、绝不影响任何 canAccept()——
+    与主回合流式路径隔离；Runtime 失败/抛错 → generateTitle 抛出（供 C1 SetSessionTitleService 降级，C1 FR-2.4），绝不静默返回空串造假标题。
+    新建 generate-title.test.ts（假 AgentRuntimePort 产 text 事件 + 假 ProviderReadPort + spy registry）：正常产出返回拼好标题；
+    spy 断言全程 registry.register 零调用、无 new StreamSession（可注入 spy registry / 断言构造未持有 registry 或未调其写方法）；Runtime 抛错 → generateTitle 抛出。
+    核心零框架铁律：不 import @anthropic-ai/* / @nestjs/* / better-sqlite3 / node:child_process / node:timers / codex；不直调 setTimeout/Date.now/randomUUID（守卫会拦）。
+    import type + .js（verbatimModuleSyntax），值 import 走普通 import + .js；字段 readonly；术语中文。不改 index.ts（合并阶段处理）、不跑 npm run test（合并阶段统一跑）。
+- id: "c2-7-2"
+  title: 权限决议中转契约 + PermissionController（忠实转发，C2 不做经纪判定）
+  description: >-
+    接通权限决议回传侧：把上层（经 C5 经纪）的决议（allow/allow_session/deny + 可选 updatedInput/denyMessage + permissionRequestId）转发给对应 AgentRuntimePort 适配器；
+    apps/api 落 PermissionController（POST /api/chat/permission）。C2 不做经纪判定（FR-7.3），只忠实中转。权限请求产出侧（permission_request 事件）复用 c2-3，不重造。详见 SPEC.md 的 CAP-2。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    先读 c2-1 端口 packages/core/src/agent-runtime/ports/driven/agent-runtime-port.ts 确认当前只有 run/interrupt/forceKillTurn/availability。
+    权限【请求】已由 EventMapper 归一成 permission_request 事件（c2-3 事件模型内，本故事不重造事件类型）。本故事接通【决议回传】：
+    ① 若需 AgentRuntimePort 新增决议投递签名（如 resolvePermission(turnRef: TurnRef, decision: PermissionDecision): void|Promise<void>），
+       这是对既有端口的【最小扩展】——在 SPEC/端口注释记录，PermissionDecision 形状含 permissionRequestId + status(allow/allow_session/deny) + 可选 updatedInput/denyMessage；
+       RuntimeRouter（apps/api/src/agent-runtime/runtime-router.ts）按 turnRef.streamId 定位适配器委派（对齐既有 interrupt/forceKillTurn 路由），
+       ClaudeSdkRuntimeAdapter 补最小实现或占位（真实 SDK 决议投递可待适配器完善，但中转契约绝不吞决议）。
+    ② apps/api/src/agent-runtime/controllers/permission.controller.ts：PermissionController，POST /api/chat/permission，
+       解析决议 body → 经驱动端口/RuntimeRouter 转发 → 对应适配器。C2 侧【绝无】经纪逻辑（无自动批准/超时自动拒绝/任何裁决）——那全归 C5。
+    apps/api 框架层：允许 import @nestjs/*；构造依赖经 Module 注入（AgentRuntimePort 或 RuntimeRouter）。
+    单测/接线断言（假 AgentRuntimePort spy）：给定决议 → 转发路径被调、permissionRequestId/status/decision 忠实透传、C2 未篡改未裁决。
+    import type + .js；术语中文。控制器在 c2-7-4 统一注册进 Module（本故事可先落类）。不跑 npm run test。
+    【spec_checkpoint】本故事涉及 AgentRuntimePort 端口扩展与 C5 边界（C2 只中转不经纪），实现前需人工确认端口扩展形状与决议 DTO 契约。
+- id: "c2-7-3"
+  title: ForceAbortScheduler 的 setTimeout 生产实现（c2-5 端口的接线另一半）
+  description: >-
+    在 apps/api 落 SetTimeoutForceAbortScheduler implements ForceAbortScheduler：schedule 用 setTimeout 安排、返回 cancel 用 clearTimeout 取消；
+    c2-5 只定端口契约 + FORCE_ABORT_MS 常量，生产实现明确划归 c2-7（核心零框架禁 setTimeout）。详见 SPEC.md 的 CAP-5。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/adapters/set-timeout-force-abort-scheduler.ts：
+    class SetTimeoutForceAbortScheduler implements ForceAbortScheduler（复用 c2-5 端口 @codepilot/core 的 ForceAbortScheduler，import type）——
+    schedule(callback, delayMs) 经 setTimeout(callback, delayMs) 安排，返回的 cancel 函数经 clearTimeout 取消；已到期/已触发后 cancel 为 no-op（不抛）。
+    apps/api 框架层允许 setTimeout/clearTimeout（不受核心铁律约束）。
+    新建 set-timeout-force-abort-scheduler.spec.ts（vi.useFakeTimers）：schedule 后 vi.advanceTimersByTime 触发 callback；cancel 后推进不触发；重复 cancel 不抛。
+    本 scheduler 在 c2-7-4 经 AgentRuntimeModule 注入 AbortStreamService（构造第 3 参 scheduler）。
+    import type + .js；术语中文；@codepilot/core 桶导入风格对齐既有 apps/api 文件。不跑 npm run test。
+- id: "c2-7-4"
+  title: AgentRuntimeModule DI 接线 + forwardRef 解 C1↔C2 环
+  description: >-
+    在 apps/api 落 AgentRuntimeModule（NestJS）：按 architecture §8 useFactory 装配 StartStreamService/AbortStreamService/GenerateTitleService/RuntimeRouter/
+    InMemoryStreamSessionRegistry/SetTimeoutForceAbortScheduler；imports SharedKernelModule + C7 stub provider + forwardRef(ConversationModule)；
+    exports StartStreamUseCase/AbortStreamUseCase/AgentRuntimePort（供 C3）/TitleGenerator（供 C1）；C1 侧 TITLE_GENERATOR 改绑 GenerateTitleService（经 forwardRef 解环）。详见 SPEC.md 的 CAP-3。
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    先读 apps/api/src/conversation/conversation.module.ts 与其 .spec.ts 学 useFactory 手工注入范式（core 无 @Injectable，DI 全在此接线；构造参数顺序严格对齐 core constructor）。
+    新建 apps/api/src/agent-runtime/agent-runtime.module.ts + agent-runtime.tokens.ts（token 常量）：
+    providers（useFactory，构造签名务必对齐 core）：
+      - InMemoryStreamSessionRegistry（c2-4 StreamSessionRegistry 值 import；本期若无生产实现则以 new StreamSessionRegistry() 装配，确认其可直接实例化）。
+      - SetTimeoutForceAbortScheduler（c2-7-3）。
+      - C7 ProviderReadPort stub（本期最小只读 stub，返回写死 Claude provider；sprint-plan 四「stub 顶替」）。
+      - RuntimeRouter（c2-6，构造 adapters map { [RuntimeKind.CLAUDE_SDK]: claudeSdkAdapter } + errorClassifier）作为 AgentRuntimePort 实现；ClaudeSdkRuntimeAdapter 亦在此装配。
+      - StartStreamService（c2-4，8 参：registry, runtime(=RuntimeRouter), providers(=C7 stub), history(=C1 GET_SESSION_HISTORY_USECASE 经 forwardRef), messages(=C1 APPEND_MESSAGE_USECASE 经 forwardRef), idGenerator, clock, errorClassifier）。
+      - AbortStreamService（c2-5，5 参：runtime(=RuntimeRouter), registry, scheduler(=SetTimeout...), errorClassifier, clock）。
+      - GenerateTitleService（c2-7-1，构造对齐其 constructor：AgentRuntimePort + ProviderReadPort + 必要 SK 端口）。
+    imports: [SharedKernelModule, <C7 stub module 或本地 provider>, forwardRef(() => ConversationModule)]。
+    exports: START_STREAM_USECASE, ABORT_STREAM_USECASE, AGENT_RUNTIME_PORT（供 C3）, TITLE_GENERATOR（供 C1，forwardRef 另一侧）。
+    controllers: [ChatController, PermissionController, RuntimeController]（类在 c2-7-2/c2-7-5 落，本故事注册）。
+    【解环关键】编辑 apps/api/src/conversation/conversation.module.ts：TITLE_GENERATOR 从 StubTitleGenerator 改绑经 forwardRef(() => AgentRuntimeModule) 注入的 GenerateTitleService（两侧 forwardRef 才解环）；StubTitleGenerator 退场或仅留 fallback。
+    根模块 app.module.ts 注册 AgentRuntimeModule。
+    新建 agent-runtime.module.spec.ts（对齐 conversation.module.spec.ts 范式，Test.createTestingModule）：断言能解析 StartStreamUseCase/AbortStreamUseCase/TitleGenerator/AgentRuntimePort；C1↔C2 双向依赖经 forwardRef 解、无 Nest 循环依赖报错。
+    核心包之间只单向 import type、无实现级环；禁 as any、禁把 C1 实体/StreamStatus import 进 C2 核心。术语中文。不跑 npm run test。
+    【spec_checkpoint】本故事是 C1↔C2 环的接线闭合点（apps/api 能否启动的关键），且改动既有 ConversationModule，实现前需人工确认 forwardRef 两侧绑定与构造参数顺序。
+- id: "c2-7-5"
+  title: 驱动适配器 Chat/Runtime 控制器（接 StartStream/AbortStream/availability 驱动端口）
+  description: >-
+    在 apps/api 落 ChatController（POST /api/chat 发起回合 → SSE 消费 StartStreamResult.events；POST /api/chat/interrupt → AbortStreamUseCase.abort）
+    与 RuntimeController（GET /api/runtime/availability → AgentRuntimePort.availability()）。控制器只做协议边界翻译，不含业务判定。详见 SPEC.md 的 CAP-4。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    新建 apps/api/src/agent-runtime/controllers/chat.controller.ts 与 runtime.controller.ts（PermissionController 属 c2-7-2）：
+    ChatController：POST /api/chat 解析 body（对齐 StartStreamInput：sessionId/content/mode/model/providerId + 可选字段）→ StartStreamUseCase.start →
+      把 StartStreamResult.events 逐事件写为 SSE 帧（NestJS @Sse 或手写 response 流，观察 apps/api 现有 SSE 能力选一致方式）；POST /api/chat/interrupt 解析 streamId → AbortStreamUseCase.abort。
+    RuntimeController：GET /api/runtime/availability → AgentRuntimePort.availability() 投影（未注册 Runtime 显 unavailable/unknown，绝不显假 ready，反假数据）。
+    控制器【薄层】：只翻译 HTTP body ↔ 用例入参、事件流 ↔ SSE 帧，不含业务判定；用户可见状态字段带 source breadcrumb（phase/canAccept/ABORTED/tokenUsage 语义来源对齐 PRD §0），SSE 帧透传归一事件不伪造。
+    apps/api 框架层允许 import @nestjs/*；依赖经 Module 注入（START_STREAM_USECASE/ABORT_STREAM_USECASE/AGENT_RUNTIME_PORT token）。
+    本故事不实现 SSE 广播 fan-out / 文件日志 / Last-Event-ID 补发 / CLI（属 S9 验收链路），只落最小 SSE 直推。
+    【安全】/api/chat 等为本机无鉴权端点（sprint-plan「无 UI 本机后端」定位），在控制器注释显式记录无鉴权、生产化前需补访问控制。
+    控制器在 c2-7-4 已注册进 AgentRuntimeModule.controllers（若 c2-7-4 先行则确认注册；否则本故事补注册）。import type + .js；术语中文。不跑 npm run test。
+- id: "c2-7-6"
+  title: 终态 → C1 持久 StreamStatus 映射接线闭合（绑真 C1 AppendMessageUseCase / 不传 phase / 不直写库）
+  description: >-
+    闭合终态→C1 StreamStatus 链路：确认 AgentRuntimeModule 注入给 StartStreamService 的 messages 是真 C1 AppendMessageService（经 forwardRef，非 stub），
+    使回合终态经 updateStreamStatus 真正映射写回 C1（completed→completed / aborted→interrupted / errored→error，architecture §6.4）。映射纯函数 terminalSubstateToStreamStatus 已在 c2-4 实现，本故事不重写，只验接线闭合。详见 SPEC.md 的 CAP-6。
+  spec_checkpoint: false
+  invoke_dev_with: >-
+    本故事在 c2-7-4 的 AgentRuntimeModule 接线上做映射链路的【闭合确认与测试】，不新增映射逻辑（terminalSubstateToStreamStatus 在 packages/core/src/agent-runtime/usecases/start-stream.ts 已实现并经 c2-4 测过，绝不重写）：
+    ① 确认 StartStreamService 的 messages 依赖经 AgentRuntimeModule（forwardRef）绑定到 C1 真实 APPEND_MESSAGE_USECASE（AppendMessageService），非 stub——回合终态经 persistTerminalTurn → AppendMessageUseCase.append（含 streamStatus 映射）真正写回 C1 持久层。
+    ② 接线/集成层断言（可用 Test.createTestingModule + 假 C1 AppendMessageUseCase spy，或轻量集成）：
+       terminal(completed)→append 的 streamStatus='completed'、terminal(aborted)→'interrupted'、terminal(errored)→'error'；无「C2 完成但 C1 存 streaming」漂移（AC-12）。
+       只经 C1.AppendMessageUseCase 端口写、C2 不直写库、不传 phase 本身给 C1（AC-12）；phase 是内存态、不出现在任何持久化路径（AC-15）。
+    apps/api 框架层；依赖经 Module 注入。若映射链路已在 c2-7-4/既有 c2-4 测覆盖，本故事补接线级断言（端口绑定正确 + 无漂移）即可，不造重复纯函数测试。
+    import type + .js；术语中文。不跑 npm run test。

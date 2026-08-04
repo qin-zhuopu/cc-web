@@ -31,7 +31,7 @@ status: 已与用户确认范围，待开工
 |---|---|---|
 | 新建会话 | `POST /api/sessions/stream` | body 带**完整 query options**（工作目录/模型/mode/thinking/context1m/skills 等）+ 第一句话。首个 SSE 事件回推新 session id，随后流式跑第一轮。 |
 | 挂载已有会话 | `GET /api/sessions/:id/stream` | 给 id 就挂上，一直收 SSE。断线后带 `Last-Event-ID` 重连即补发。 |
-| 发消息 | `POST /api/sessions/:id/messages` | curl 发，立即返回，触发新一轮；事件广播给所有挂在该会话 stream 上的连接。 |
+| 发消息 | `POST /api/sessions/:id/turn` | curl 发，立即返回，触发新一轮；事件广播给所有挂在该会话 stream 上的连接。注：用 `/turn` 非 `/messages`——`/messages` 被 C1 MessageController 占用（落消息表），二者语义不同故分离。 |
 | 列会话 | `GET /api/sessions`（历史）/ 活跃列表 | 会话管理用例投影。 |
 
 **一式三份（每个流式事件的三个落点）：**
@@ -53,8 +53,8 @@ status: 已与用户确认范围，待开工
 **做：** SK 全套 / C1 全套 / C2 核心 + 用例 + ClaudeSdkRuntimeAdapter / 验收链路（三件套接口 + 一式三份 + 补发 + CLI）。
 
 **本期延后（deferred，接口保留，将来加不改核心）：**
-- C2 的 **Native 运行时适配器**（story c2-6-2）。
-- C2 的 **Codex 运行时适配器**及其进程隔离/fail-fast/EventMapper（c2-6-3~6-5、6-7）。
+- C2 的**其他 AI agent 运行时适配器（未具名，预留扩展点）**（story c2-6-2）。
+- C2 的**未具名新协议适配器**及其进程隔离/fail-fast/EventMapper（c2-6-3~6-5、6-7）。
 - SK 的 **C7 试点消费验证**（sk-4-4，因 C7 本期不做）。
 
 **本期用 stub 顶替：**
@@ -105,7 +105,7 @@ status: 已与用户确认范围，待开工
 - **产出**：发起与中断用例全通（假出站端口），终态映射回 C1。
 
 ### S8 · C2 Claude 适配器 + 接线
-- C2 E6：**仅** ClaudeSdkRuntimeAdapter + ClaudeSdkEventMapper（含 resume 续接、句柄/lockId 归属、组合中断）+ RuntimeRouter（c2-6-1、6-6）。**Native/Codex 延后。**
+- C2 E6：**仅** ClaudeSdkRuntimeAdapter + ClaudeSdkEventMapper（含 resume 续接、句柄/lockId 归属、组合中断）+ RuntimeRouter（c2-6-1、6-6）。**其他 AI agent 运行时适配器（未具名，预留扩展点）延后。**
 - C2 E7：TitleGenerator + 权限事件中转 + AgentRuntimeModule 接线（两侧 forwardRef 解 C1↔C2 环）+ 终态→C1 StreamStatus 映射（c2-7-x）。
 - **产出**：真接 Claude SDK，能流式跑一轮、能停、能 resume 续接。**第二个可用里程碑：能真的跟 AI 流式对话。**
 
@@ -115,7 +115,7 @@ status: 已与用户确认范围，待开工
 - accept-3：文件事件日志适配器（append-only + seq）。
 - accept-4：`POST /api/sessions/stream` 新建（带 options+首句，首事件回推 id）。
 - accept-5：`GET /api/sessions/:id/stream` 挂载已有会话。
-- accept-6：`POST /api/sessions/:id/messages` 发消息触发一轮 + 广播。
+- accept-6：`POST /api/sessions/:id/turn` 发消息触发一轮 + 广播（独立路径，避免与 C1 `:id/messages` 撞）。
 - accept-7：`Last-Event-ID` 断线补发（从文件日志回放 seq 之后事件）。
 - accept-8：CLI 监听客户端（`listen --new` / `listen --session <id>`）。
 - accept-9：端到端 smoke —— 新建→流式→curl 发消息→断线重挂补发，全链路验证。

@@ -107,10 +107,10 @@ C3 交付一个**零框架的子智能体编排核心** + 其 NestJS 适配层�
 
 ## 3. 非功能需求（NFR）
 
-- **NFR-1 六边形纯净**：`packages/core/subagent/` 不 import `@anthropic-ai/*` / `child_process` / `codex` / `better-sqlite3` / `@nestjs/*` / HTTP 细节；AI 调用经 `AgentRuntimePort`、权限经 `PermissionBrokerPort`、持久化经 `SubagentRunRepository`，全部是接口（`import type`）。
+- **NFR-1 六边形纯净**：`packages/core/subagent/` 不 import `@anthropic-ai/*` / `child_process` / `better-sqlite3` / `@nestjs/*` / HTTP 细节；AI 调用经 `AgentRuntimePort`、权限经 `PermissionBrokerPort`、持久化经 `SubagentRunRepository`，全部是接口（`import type`）。
 - **NFR-2 durable ≠ 内存**：C3 的 `RunPhase` 落库，是唯一权威事实源；不 import C2 的 `StreamPhase` 做持久判断（对齐 CLAUDE.md stop/abort 高发区纪律，类型层面切断）。
 - **NFR-3 依赖倒置**：C3 核心只依赖 `C2.AgentRuntimePort` / `C5.PermissionBrokerPort` / `SK.*` 的接口；实现经 NestJS DI 注入。
-- **NFR-4 隔离进程病**：Codex app-server 僵死 / spawn 失败等锁在 C2 的 `CodexRuntimeAdapter` 内 fail-fast；C3 只消费归一后的 `ClassifiedError`，把对应 attempt 归 `terminal(failed, PROCESS)`，不卡死 logical run 生命周期。
+- **NFR-4 隔离进程病**：任一 Runtime app-server 僵死 / spawn 失败等锁在 C2 的对应适配器内 fail-fast；C3 只消费归一后的 `ClassifiedError`，把对应 attempt 归 `terminal(failed, PROCESS)`，不卡死 logical run 生命周期。
 - **NFR-5 幂等收口**：terminal 收口只允许第一次原子写入；completed/partial/failed/cancelled/timed_out 之间不互相覆盖；迟到事件 no-op。
 - **NFR-6 结构化错误**：所有失败经 `SK.ErrorClassifier` 归一并保留 structured error / provenance；错误码在 UI 上可区分（ABORTED / PROCESS / NOT_FOUND / TIMEOUT / UNAVAILABLE 等）。
 - **NFR-7 可审计**：malformed input 等未成功创建 durable row 的调用不是 Agent run，不产生胶囊；只有 durable row + 有效 evidence 才是 run。
@@ -137,7 +137,7 @@ C3 交付一个**零框架的子智能体编排核心** + 其 NestJS 适配层�
 - **AC-14（queued Stop 取消）**：queued（等上游）的 child 被父 Stop → 进 `terminal(cancelled)`，不等依赖 deadline（组合 AbortSignal / dispatch_state）。
 - **AC-15（跨回合事实源，反例）**：父模型查进展 → `latestAttemptSnapshot` 只读 durable 表返回 lifecycle-only；断言 Repository 无从正文 / update_plan / 耗时推断状态的路径。
 - **AC-16（幂等收口）**：并发触发两次 terminal 收口，断言只第一次生效、outcome 不被第二次覆盖（NFR-5）。
-- **AC-17（边界纯净）**：`packages/core/subagent/` 禁用 import 扫描——`@anthropic-ai/*` / `child_process` / `codex` / `better-sqlite3` / `@nestjs/*` 0 命中；AI 调用 / 权限 / 持久化全经端口接口。
+- **AC-17（边界纯净）**：`packages/core/subagent/` 禁用 import 扫描——`@anthropic-ai/*` / `child_process` / `better-sqlite3` / `@nestjs/*` 0 命中；AI 调用 / 权限 / 持久化全经端口接口。
 - **AC-18（无假数据）**：Runtime 未上报 effective model → attempt.route 保留 verified requested 并标"未报告"，断言 UI 不冒充；无 durable evidence → 不显示胶囊（不显示假 running）。
 
 ## 5. Story → AC 追溯

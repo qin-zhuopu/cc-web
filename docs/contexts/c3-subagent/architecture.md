@@ -438,7 +438,7 @@ export type { PermissionBrokerPort };   // C3 只转交权限请求 / 消费决�
 - **details evidence**：读取返回有效 durable row 才算 managed evidence（FR-8.3）；缺失（等价 404）返回 null，UI 据此暂记 missing、不永久轮询。
 
 ### 7.2 C2 / C5 / SK 适配器（不在 C3 实现）
-- `AgentRuntimePort` 实现（`RuntimeRouter` + 三 Runtime 适配器）由 **C2 Module** 提供，经 DI 注入；Codex 进程病 fail-fast 归一成 `ClassifiedError` 全锁在 C2 的 `CodexRuntimeAdapter` 内（NFR-4）——C3 只消费该错误把 attempt 归 `terminal(failed, PROCESS)`。
+- `AgentRuntimePort` 实现（`RuntimeRouter` + 已注册 Runtime 适配器）由 **C2 Module** 提供，经 DI 注入；任一 Runtime 进程病 fail-fast 归一成 `ClassifiedError` 全锁在 C2 的对应适配器内（NFR-4）——C3 只消费该错误把 attempt 归 `terminal(failed, PROCESS)`。
 - `PermissionBrokerPort` 实现由 **C5 Module** 提供；`IdGenerator` / `Clock` / `ErrorClassifier` / `RuntimeLog` / `TranslationPort` 由 **SharedKernelModule** 提供。
 
 ## 8. 依赖注入接线 (NestJS 侧)
@@ -483,7 +483,7 @@ NestJS DI 充当接线盒，核心包零框架依赖，符合分层铁律。**�
 **边界纪律自检**：
 - C3 未定义 / 未重写任何 C2 概念（`StreamSession` / `StreamPhase` / `AgentStreamEvent` 只 `import type`）；未重写 C5 权限经纪；未重写 SK 概念。
 - C3 核心**不含** AI 调用本身（run/interrupt 经 `AgentRuntimePort`）、权限经纪判定（经 `PermissionBrokerPort`）、会话/消息持久化（属 C1）、Provider 配置管理（属 C7）。
-- C3 核心不 import `@anthropic-ai/*` / `better-sqlite3` / `@nestjs/*` / `node:child_process` / codex SDK；DB 全在 `SqliteSubagentRunRepository`，AI/进程全在 C2 适配器（NFR-1 / AC-17）。
+- C3 核心不 import `@anthropic-ai/*` / `better-sqlite3` / `@nestjs/*` / `node:child_process`；DB 全在 `SqliteSubagentRunRepository`，AI/进程全在 C2 适配器（NFR-1 / AC-17）。
 - `RunPhase` 是**持久落库**任务相位，与 C2 内存 `StreamPhase` 分属两个上下文、两条轨道，不混用（NFR-2 / AC-6）——这是 C3 区别于 C2 的核心点，也切断"页面切走误 abort / terminal 被覆盖"根因。
 - attempt 只按显式 `logical_run_id` 关联，缺省不隐式合并；active/completed ID 误复用应用层拒绝（FR-1.2 / FR-5.4 / AC-4/5）。
 
@@ -507,4 +507,4 @@ NestJS DI 充当接线盒，核心包零框架依赖，符合分层铁律。**�
 - queued Stop（AC-14）：queued child 被 Stop → terminal(cancelled) 不等 deadline。
 - 跨回合事实源（AC-15，反例）：`latestAttemptSnapshot` 只读 durable 表返回 lifecycle-only；断言无从正文/耗时推断路径。
 - 无假数据（AC-18，反例）：无 effective model → 保留 verified requested 标"未报告"；无 durable evidence → 不显胶囊。
-- 静态检查（AC-17）：`subagent/` 核心包禁用 import 扫描（`@anthropic-ai/*` / `child_process` / `codex` / `better-sqlite3` / `@nestjs/*` 0 命中）+ RunPhase 只经 Repository 落库、AI/权限只经端口接口。
+- 静态检查（AC-17）：`subagent/` 核心包禁用 import 扫描（`@anthropic-ai/*` / `child_process` / `better-sqlite3` / `@nestjs/*` 0 命中）+ RunPhase 只经 Repository 落库、AI/权限只经端口接口。

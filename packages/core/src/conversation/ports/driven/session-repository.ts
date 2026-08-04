@@ -3,7 +3,7 @@
 // 对齐 architecture §5.1。零框架 import；实现（SqliteSessionRepository）在 apps/api 适配器层。
 //
 // 【字段归属纪律】本端口只投影会话本体（ChatSession 的 10 字段），
-// 不为运行时/Provider/Codex 寄存列负责——那些读写归各自领域边界经其端口。
+// 不为运行时/Provider 内部寄存列负责——那些读写归各自领域边界经其端口。
 
 import type {
   ChatSession,

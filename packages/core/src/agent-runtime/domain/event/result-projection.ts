@@ -8,7 +8,7 @@
 // 「已归一的原始上报 → result 投影」的最后一步反假数据把关。
 //
 // 【铁律】核心零框架：本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；不直调 Clock/随机源（本函数无副作用、无时间/随机依赖）。
+// node:child_process；不直调 Clock/随机源（本函数无副作用、无时间/随机依赖）。
 // 只 import type 引用同域已定义的 TokenUsage，绝不重定义值对象签名。
 
 import type { TokenUsage } from './agent-stream-event.js';

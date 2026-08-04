@@ -11,7 +11,7 @@
 // 本注册表只提供查询/登记/移除的最小索引 API，不自行做迁移或去重。
 //
 // 【铁律 · 核心零框架】本文件不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex / uuid；不直调系统时钟、不生成 id（登记的 StreamSession 已自带 id）。
+// node:child_process / uuid；不直调系统时钟、不生成 id（登记的 StreamSession 已自带 id）。
 // 类型-only import 用 import type + .js 扩展名（verbatimModuleSyntax），值 import 走普通 import。
 
 import type { StreamSession } from '../domain/stream/stream-session.js';

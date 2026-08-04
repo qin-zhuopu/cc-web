@@ -105,6 +105,7 @@ export type {
   RuntimeRunOptions,
   TurnRef,
   AbortSignalLike,
+  PermissionDecision,
 } from './agent-runtime/ports/driven/agent-runtime-port.js';
 export type { ProviderReadPort, ResolvedProviderView, ProviderProtocol } from './agent-runtime/ports/driven/provider-read-port.js';
 // 喂模型历史投影（AppendMessageUseCase/GetSessionHistoryUseCase 已由 C1 段导出，此处不重复）
@@ -172,6 +173,8 @@ export { StreamSessionRegistry } from './agent-runtime/usecases/stream-session-r
 // ---- C2-E5 AbortStream 中断用例编排 + force-abort 调度端口 ----
 // AbortStreamService 实现 AbortStreamUseCase（#578 编排层切断：force-abort 无条件先行 + interrupt 不阻塞相位翻转）。
 export { AbortStreamService } from './agent-runtime/usecases/abort-stream.js';
+// ---- C2-E7 GenerateTitleService（TitleGenerator 权威实现，非流式一次性，与主回合隔离 AC-13）----
+export { GenerateTitleService } from './agent-runtime/usecases/generate-title.js';
 // ForceAbortScheduler：force-abort 安全网延时调度抽象（driven port）；FORCE_ABORT_MS 缺省到期延时常量。
 export type { ForceAbortScheduler } from './agent-runtime/ports/driven/force-abort-scheduler.js';
 export { FORCE_ABORT_MS } from './agent-runtime/ports/driven/force-abort-scheduler.js';

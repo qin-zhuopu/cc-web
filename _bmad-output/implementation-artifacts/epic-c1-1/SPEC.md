@@ -16,7 +16,7 @@ sources:
 
 这是 C1 Conversation 领域边界的**地基故事**：把「会话是什么、消息是什么」用零框架的富类型钉死，再摆出用例（驱动）与持久化（被驱动）的端口骨架，最后用静态守卫锁住边界纯净。它要一次性解决现有代码库两个反复出问题的痛点。
 
-其一是**领域被运行时细节淹没**：现有 `chat_sessions` 表混入 `sdk_session_id` / `codex_thread_id` / `runtime_status` / `provider_id` / `context_summary*` 等一大批非会话本体字段（分属 C2 运行时 / C7 消费投影 / C5 权限）。C1 领域模型只建模会话本体 10 字段（architecture §3.1「字段归属」），让「会话是什么」重新清晰。
+其一是**领域被运行时细节淹没**：现有 `chat_sessions` 表混入 `sdk_session_id` / 其他运行时句柄字段（历史遗留，已删）/ `runtime_status` / `provider_id` / `context_summary*` 等一大批非会话本体字段（分属 C2 运行时 / C7 消费投影 / C5 权限）。C1 领域模型只建模会话本体 10 字段（architecture §3.1「字段归属」），让「会话是什么」重新清晰。
 
 其二是 **stop/abort 高发区的根因——把持久生命周期误当实时流式相位读**。`Message.streamStatus`（streaming/completed/interrupted/error）回答的是「这条转录行最终完整/被中断/出错」，是**持久**语义；而「现在还在生成吗」属 C2 的 `StreamSession.phase`（active→settling→terminal）。现有 stop/abort 卡死正是这两者被混用。本 epic 在**类型与 lint 层面**切断 phase 概念进入 C1，从源头杜绝误用（PRD NFR-2 / AC-8）。
 
@@ -25,8 +25,8 @@ C1 依赖 SK 已交付的 `Clock`/`IdGenerator`/`TranslationPort`/`RuntimeLog` �
 ## Capabilities
 
 - **CAP-1 · ChatSession 会话本体实体 + 会话枚举**
-  - **intent:** 上层用例可用富类型 `ChatSession` 表达会话本体，配合 `SessionStatus`/`SessionMode`/`SessionSource` 枚举，运行时/Provider/Codex 字段一律排除在领域模型之外。
-  - **success:** `domain/session/` 下定义 `ChatSession` 实体（`SessionId` 值对象 + `id/title/titleOrigin/status/mode/source/workingDirectory/projectName/createdAt/updatedAt` 10 个会话本体字段，全 `readonly`），及 `SessionStatus`（active/archived）/`SessionMode`（code/plan/ask）/`SessionSource`（user/task）三枚举，签名与 architecture §3.1/§3.2 逐字一致；语义契约说明会话本体字段类型往返编解码不丢字段，运行时字段（`sdkSessionId`/`codexThreadId`/`runtimeStatus`/`providerId` 等）**不在**领域模型内（对齐 PRD FR-1.5、architecture §3.1「字段归属」）。
+  - **intent:** 上层用例可用富类型 `ChatSession` 表达会话本体，配合 `SessionStatus`/`SessionMode`/`SessionSource` 枚举，运行时/Provider/其他运行时句柄字段一律排除在领域模型之外。
+  - **success:** `domain/session/` 下定义 `ChatSession` 实体（`SessionId` 值对象 + `id/title/titleOrigin/status/mode/source/workingDirectory/projectName/createdAt/updatedAt` 10 个会话本体字段，全 `readonly`），及 `SessionStatus`（active/archived）/`SessionMode`（code/plan/ask）/`SessionSource`（user/task）三枚举，签名与 architecture §3.1/§3.2 逐字一致；语义契约说明会话本体字段类型往返编解码不丢字段，运行时字段（`sdkSessionId`/其他运行时句柄字段（历史遗留，已删）/`runtimeStatus`/`providerId` 等）**不在**领域模型内（对齐 PRD FR-1.5、architecture §3.1「字段归属」）。
 
 - **CAP-2 · Message 消息实体 + MessageRole + TokenUsage 投影**
   - **intent:** 上层用例可用富类型 `Message` 表达一条消息，`role` 经 `MessageRole` 枚举约束，`tokenUsage` 为「只存不算」的投影值对象——无值即未记录，绝不落假 0。

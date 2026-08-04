@@ -25,7 +25,7 @@ import {
 const ENV: RuntimeEnvConfig = {
   ANTHROPIC_BASE_URL: 'https://litellm.jereh.cn',
   ANTHROPIC_AUTH_TOKEN: 'sk-test-token',
-  ANTHROPIC_MODEL: 'Jereh-Kimi-K2.6',
+  ANTHROPIC_MODEL: 'claude-sonnet-4-5',
 };
 
 /** 简单 ErrorClassifier 替身：把任意错误归一为带 code 的 ClassifiedError。 */
@@ -66,7 +66,7 @@ function makeRequest(streamId: string, content = '你好'): RuntimeRunRequest {
     resolvedProvider: { protocol: 'anthropic', authStyle: 'auth_token', hasCredentials: true, source: 'env' },
     promptView: [],
     content,
-    options: { mode: 'code', model: 'Jereh-Kimi-K2.6' },
+    options: { mode: 'code', model: 'claude-sonnet-4-5' },
     abortSignal: makeAbortSignal(),
   };
 }
@@ -121,7 +121,7 @@ describe('ClaudeSdkRuntimeAdapter.run —— 注册句柄 + 归一流 + env 注�
       // 断言 env 被注入
       expect(params.options?.env?.ANTHROPIC_BASE_URL).toBe('https://litellm.jereh.cn');
       expect(params.options?.env?.ANTHROPIC_AUTH_TOKEN).toBe('sk-test-token');
-      expect(params.options?.env?.ANTHROPIC_MODEL).toBe('Jereh-Kimi-K2.6');
+      expect(params.options?.env?.ANTHROPIC_MODEL).toBe('claude-sonnet-4-5');
       expect(params.options?.abortController).toBeInstanceOf(AbortController);
       return makeFakeQuery([]);
     });

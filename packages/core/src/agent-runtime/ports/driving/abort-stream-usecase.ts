@@ -6,7 +6,7 @@
 // markSettling + best-effort interrupt + reconcilePhase 收敛，属 epic-c2-2）、不接 SDK、不接 NestJS DI。
 //
 // 【铁律】核心零框架：不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；类型-only import 用 import type + .js 扩展名。
+// node:child_process；类型-only import 用 import type + .js 扩展名。
 
 import type { StreamSessionId } from '../../domain/stream/stream-phase.js';
 

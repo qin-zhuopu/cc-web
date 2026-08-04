@@ -6,7 +6,7 @@
 // 不接 AgentRuntimePort 路由、不接 SDK、不接 NestJS DI。
 //
 // 【铁律】核心零框架：不 import @anthropic-ai/* / better-sqlite3 / @nestjs/* /
-// node:child_process / codex；类型-only import 用 import type + .js 扩展名，字段全 readonly。
+// node:child_process；类型-only import 用 import type + .js 扩展名，字段全 readonly。
 
 import type { StreamSessionId } from '../../domain/stream/stream-phase.js';
 import type { AgentStreamEvent } from '../../domain/event/agent-stream-event.js';
